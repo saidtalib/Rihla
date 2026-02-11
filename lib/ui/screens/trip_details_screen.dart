@@ -7,13 +7,13 @@ import '../../core/theme.dart';
 import '../../models/trip.dart';
 import '../../services/payment_service.dart';
 import '../../services/trip_service.dart';
+import '../tabs/home_tab.dart';
 import '../tabs/map_tab.dart';
-import '../tabs/expense_tab.dart';
+import '../tabs/pack_tab.dart';
 import '../tabs/vault_tab.dart';
 import '../widgets/settings_toggles.dart';
 
-/// Trip Command Center with BottomNavigationBar:
-/// Home (back) · Map · Expense · Vault
+/// Trip Dashboard with TabBar: Home · Map · The Pack · Vault
 class TripDetailsScreen extends StatefulWidget {
   const TripDetailsScreen({super.key, required this.trip});
   final Trip trip;
@@ -22,25 +22,29 @@ class TripDetailsScreen extends StatefulWidget {
   State<TripDetailsScreen> createState() => _TripDetailsScreenState();
 }
 
-class _TripDetailsScreenState extends State<TripDetailsScreen> {
+class _TripDetailsScreenState extends State<TripDetailsScreen>
+    with SingleTickerProviderStateMixin {
   late Trip _trip;
-  int _currentTab = 1; // Start on Map tab (index 1)
+  late TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
     _trip = widget.trip;
+    _tabCtrl = TabController(length: 4, vsync: this);
   }
 
-  void _onTabTapped(int index) {
-    if (index == 0) {
-      // Home tab → navigate back to main screen
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      return;
-    }
-    setState(() => _currentTab = index);
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
   }
 
+  void _onTripUpdated(Trip updated) {
+    setState(() => _trip = updated);
+  }
+
+  // ── Share / Join code ─────────────────────────
   Future<void> _onShare() async {
     final ar = AppSettings.of(context).isArabic;
 
@@ -80,43 +84,68 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               margin: const EdgeInsets.only(bottom: 24),
               decoration: BoxDecoration(
                 color: RihlaColors.jungleGreen.withValues(alpha: 0.25),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Icon(Icons.share_rounded, size: 48, color: RihlaColors.jungleGreen),
+            Icon(Icons.share_rounded,
+                size: 48, color: RihlaColors.jungleGreen),
             const SizedBox(height: 16),
             Text(ar ? 'رمز الانضمام' : 'Join Code',
-                style: TextStyle(fontFamily: fontFamily, fontSize: 20, fontWeight: FontWeight.w700, color: RihlaColors.jungleGreen)),
+                style: TextStyle(
+                    fontFamily: fontFamily,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: RihlaColors.jungleGreen)),
             const SizedBox(height: 12),
-            Text(ar ? 'شارك هذا الرمز مع أصدقائك:' : 'Share this code with your friends:',
-                style: TextStyle(fontFamily: fontFamily, fontSize: 14, color: RihlaColors.jungleGreenDark.withValues(alpha: 0.6)),
+            Text(
+                ar
+                    ? 'شارك هذا الرمز مع أصدقائك:'
+                    : 'Share this code with your friends:',
+                style: TextStyle(
+                    fontFamily: fontFamily,
+                    fontSize: 14,
+                    color:
+                        RihlaColors.jungleGreenDark.withValues(alpha: 0.6)),
                 textAlign: TextAlign.center),
             const SizedBox(height: 20),
             GestureDetector(
               onTap: () {
                 Clipboard.setData(ClipboardData(text: _trip.joinCode));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ar ? 'تم النسخ!' : 'Copied!'), backgroundColor: RihlaColors.jungleGreen),
+                  SnackBar(
+                      content: Text(ar ? 'تم النسخ!' : 'Copied!'),
+                      backgroundColor: RihlaColors.jungleGreen),
                 );
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 decoration: BoxDecoration(
                   color: RihlaColors.jungleGreen.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: RihlaColors.jungleGreen.withValues(alpha: 0.2)),
+                  border: Border.all(
+                      color:
+                          RihlaColors.jungleGreen.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(_trip.joinCode,
-                        style: TextStyle(fontFamily: GoogleFonts.pangolin().fontFamily, fontSize: 32, fontWeight: FontWeight.w800, color: RihlaColors.sunsetOrange, letterSpacing: 6)),
+                        style: TextStyle(
+                            fontFamily: GoogleFonts.pangolin().fontFamily,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            color: RihlaColors.sunsetOrange,
+                            letterSpacing: 6)),
                     const SizedBox(width: 12),
-                    Icon(Icons.copy_rounded, color: RihlaColors.jungleGreen.withValues(alpha: 0.5)),
+                    Icon(Icons.copy_rounded,
+                        color:
+                            RihlaColors.jungleGreen.withValues(alpha: 0.5)),
                   ],
                 ),
               ),
@@ -124,7 +153,9 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(onPressed: () => Navigator.pop(context), child: Text(ar ? 'تم' : 'Done')),
+              child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(ar ? 'تم' : 'Done')),
             ),
           ],
         ),
@@ -132,32 +163,28 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     );
   }
 
-  Widget _buildBody() {
-    switch (_currentTab) {
-      case 1:
-        return MapTab(trip: _trip);
-      case 2:
-        return ExpenseTab(trip: _trip);
-      case 3:
-        return VaultTab(trip: _trip);
-      default:
-        return MapTab(trip: _trip);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final settings = AppSettings.of(context);
     final ar = settings.isArabic;
-    final dark = settings.isDarkMode;
+    final fontFamily =
+        ar ? GoogleFonts.cairo().fontFamily : GoogleFonts.pangolin().fontFamily;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_trip.title, overflow: TextOverflow.ellipsis),
-        automaticallyImplyLeading: false, // no back arrow — use Home tab
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          _trip.title,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontFamily: fontFamily),
+        ),
         actions: [
           IconButton(
-            icon: Icon(_trip.isPublic ? Icons.group_rounded : Icons.share_rounded),
+            icon: Icon(
+                _trip.isPublic ? Icons.group_rounded : Icons.share_rounded),
             tooltip: ar ? 'مشاركة' : 'Share',
             onPressed: _onShare,
           ),
@@ -167,58 +194,55 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               colors: [RihlaColors.jungleGreenDark, RihlaColors.jungleGreen],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
           ),
         ),
-      ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: _buildBody(),
-      ),
-
-      // ── Bottom Navigation Bar ────────────────
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
+        bottom: TabBar(
+          controller: _tabCtrl,
+          indicatorColor: RihlaColors.sunsetOrange,
+          indicatorWeight: 3,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          labelStyle: TextStyle(
+            fontFamily: fontFamily,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+          unselectedLabelStyle: TextStyle(
+            fontFamily: fontFamily,
+            fontSize: 12,
+          ),
+          tabs: [
+            Tab(
+              icon: const Icon(Icons.home_rounded, size: 20),
+              text: ar ? 'الرئيسية' : 'Home',
+            ),
+            Tab(
+              icon: const Icon(Icons.map_rounded, size: 20),
+              text: ar ? 'الخريطة' : 'Map',
+            ),
+            Tab(
+              icon: const Icon(Icons.groups_rounded, size: 20),
+              text: ar ? 'العزوة' : 'The Pack',
+            ),
+            Tab(
+              icon: const Icon(Icons.folder_rounded, size: 20),
+              text: ar ? 'الخزنة' : 'Vault',
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: BottomNavigationBar(
-            currentIndex: _currentTab,
-            onTap: _onTabTapped,
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: dark ? const Color(0xFF1E1E36) : Colors.white,
-            selectedItemColor: RihlaColors.sunsetOrange,
-            unselectedItemColor: dark
-                ? RihlaColors.darkText.withValues(alpha: 0.5)
-                : RihlaColors.jungleGreen.withValues(alpha: 0.55),
-            items: [
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.home_rounded),
-                label: ar ? 'الرئيسية' : 'Home',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.map_rounded),
-                label: ar ? 'الخريطة' : 'Map',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.monetization_on_rounded),
-                label: ar ? 'المصاريف' : 'Expense',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.folder_rounded),
-                label: ar ? 'الخزنة' : 'Vault',
-              ),
-            ],
-          ),
-        ),
+      ),
+
+      body: TabBarView(
+        controller: _tabCtrl,
+        children: [
+          HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
+          MapTab(trip: _trip),
+          PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
+          VaultTab(trip: _trip),
+        ],
       ),
     );
   }

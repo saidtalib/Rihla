@@ -147,6 +147,28 @@ class TripService {
     }).timeout(const Duration(seconds: 10));
   }
 
+  // ── Remove a member from trip ─────────────────
+  Future<void> removeMember(String tripId, String memberId) async {
+    await _trips.doc(tripId).update({
+      'paid_members': FieldValue.arrayRemove([memberId]),
+      'members.$memberId': FieldValue.delete(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Update trip title ─────────────────────────
+  Future<void> updateTitle(String tripId, String newTitle) async {
+    await _trips.doc(tripId).update({
+      'title': newTitle,
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Delete a location from trip ───────────────
+  Future<void> removeLocation(String tripId, List<TripLocation> updatedLocations) async {
+    await _trips.doc(tripId).update({
+      'locations': updatedLocations.map((l) => l.toMap()).toList(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
   // ── My trips ────────────────────────────────
   Future<List<Trip>> myTrips() async {
     debugPrint('[TripService] myTrips() called for UID: $_uid');
