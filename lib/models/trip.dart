@@ -1,20 +1,54 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Transport mode between stops.
+enum TransportType { drive, flight, train, ferry, unknown }
+
+TransportType _parseTransportType(String? raw) {
+  switch (raw?.toLowerCase()) {
+    case 'drive':
+      return TransportType.drive;
+    case 'flight':
+      return TransportType.flight;
+    case 'train':
+      return TransportType.train;
+    case 'ferry':
+      return TransportType.ferry;
+    default:
+      return TransportType.unknown;
+  }
+}
+
 /// A location on the trip route.
 class TripLocation {
   final String name;
   final double lat;
   final double lng;
+  final TransportType transportType;
+  final bool isOvernight; // hotel / camp stop
 
-  const TripLocation({required this.name, required this.lat, required this.lng});
+  const TripLocation({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    this.transportType = TransportType.unknown,
+    this.isOvernight = false,
+  });
 
   factory TripLocation.fromMap(Map<String, dynamic> m) => TripLocation(
         name: m['name'] as String? ?? '',
         lat: (m['lat'] as num?)?.toDouble() ?? 0.0,
         lng: (m['lng'] as num?)?.toDouble() ?? 0.0,
+        transportType: _parseTransportType(m['transport_type'] as String?),
+        isOvernight: m['is_overnight'] as bool? ?? false,
       );
 
-  Map<String, dynamic> toMap() => {'name': name, 'lat': lat, 'lng': lng};
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'lat': lat,
+        'lng': lng,
+        'transport_type': transportType.name,
+        'is_overnight': isOvernight,
+      };
 }
 
 /// Member role within a trip.

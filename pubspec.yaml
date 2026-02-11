@@ -27,8 +27,9 @@ dependencies:
   # AI
   google_generative_ai: ^0.4.6
 
-  # Maps
+  # Maps & Location
   google_maps_flutter: ^2.10.0
+  geolocator: ^13.0.2
 
   # Media
   image_picker: ^1.1.2
@@ -46,3 +47,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icons/jeep.png
+    - assets/icons/plane.png
+    - assets/icons/train.png
+    - assets/icons/ferry.png
+    - assets/icons/tent.png
