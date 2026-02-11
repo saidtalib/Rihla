@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1033074555968",
+    "project_id": "rihla-app-almaw",
+    "storage_bucket": "rihla-app-almaw.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1033074555968:android:ed40341841f18dd392f3a5",
+        "android_client_info": {
+          "package_name": "com.almaw.rihla"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbiFIoQfTDkTrIkdwweFW8_RzjEsD1WEI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1033074555968:android:da3e889e7ccd036992f3a5",
+        "android_client_info": {
+          "package_name": "com.example.myapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbiFIoQfTDkTrIkdwweFW8_RzjEsD1WEI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

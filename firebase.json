@@ -1,0 +1,24 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "rihla-app-almaw",
+          "appId": "1:1033074555968:android:ed40341841f18dd392f3a5",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "rihla-app-almaw",
+          "configurations": {
+            "android": "1:1033074555968:android:ed40341841f18dd392f3a5"
+          }
+        }
+      }
+    }
+  }
+}
