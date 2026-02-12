@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -75,7 +73,7 @@ class ChatMessage {
       };
 }
 
-/// Manages chat messages, file uploads, and vault sync for a trip.
+/// Manages chat messages, file uploads (web-safe via bytes), and vault sync.
 class ChatService {
   ChatService._();
   static final ChatService instance = ChatService._();
@@ -118,13 +116,21 @@ class ChatService {
     await _messages(tripId).add(msg.toFirestore());
   }
 
+  // ── Upload bytes (web-safe) ─────────────────
+  Future<String> _uploadBytes(
+      String tripId, Uint8List bytes, String fileName) async {
+    final ref = _storage.ref('trips/$tripId/chat_files/$fileName');
+    await ref.putData(bytes);
+    return await ref.getDownloadURL();
+  }
+
   // ── Send a photo message + vault sync ───────
-  Future<void> sendPhoto(String tripId, File imageFile) async {
+  Future<void> sendPhoto(
+      String tripId, Uint8List bytes, String fileName) async {
     try {
-      final name = '${DateTime.now().millisecondsSinceEpoch}_$_uid.jpg';
-      final ref = _storage.ref('trips/$tripId/chat_files/$name');
-      await ref.putFile(imageFile);
-      final url = await ref.getDownloadURL();
+      final safeName =
+          '${DateTime.now().millisecondsSinceEpoch}_${_uid}_$fileName';
+      final url = await _uploadBytes(tripId, bytes, safeName);
 
       final msg = ChatMessage(
         id: '',
@@ -133,14 +139,14 @@ class ChatService {
         senderPhotoUrl: _photoUrl,
         text: '',
         fileUrl: url,
-        fileName: name,
+        fileName: fileName,
         type: MessageType.image,
         timestamp: DateTime.now(),
       );
       await _messages(tripId).add(msg.toFirestore());
 
       // Vault sync
-      await _addToVault(tripId, url, 'image', name);
+      await _addToVault(tripId, url, 'image', fileName);
     } catch (e) {
       debugPrint('ChatService.sendPhoto error: $e');
       rethrow;
@@ -148,13 +154,12 @@ class ChatService {
   }
 
   // ── Send a PDF file + vault sync ────────────
-  Future<void> sendPdf(String tripId, File pdfFile, String originalName) async {
+  Future<void> sendPdf(
+      String tripId, Uint8List bytes, String originalName) async {
     try {
       final safeName =
           '${DateTime.now().millisecondsSinceEpoch}_${_uid}_$originalName';
-      final ref = _storage.ref('trips/$tripId/chat_files/$safeName');
-      await ref.putFile(pdfFile);
-      final url = await ref.getDownloadURL();
+      final url = await _uploadBytes(tripId, bytes, safeName);
 
       final msg = ChatMessage(
         id: '',
@@ -236,5 +241,13 @@ class ChatService {
               data['id'] = d.id;
               return data;
             }).toList());
+  }
+
+  // ── Upload profile photo (web-safe) ─────────
+  Future<String> uploadProfilePhoto(Uint8List bytes) async {
+    final name = '${DateTime.now().millisecondsSinceEpoch}_$_uid.jpg';
+    final ref = _storage.ref('users/$_uid/profile/$name');
+    await ref.putData(bytes);
+    return await ref.getDownloadURL();
   }
 }

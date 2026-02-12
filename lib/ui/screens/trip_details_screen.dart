@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_settings.dart';
-import '../../core/theme.dart';
 import '../../models/trip.dart';
-import '../../services/payment_service.dart';
 import '../../services/trip_service.dart';
+import '../../ui/theme/app_theme.dart';
 import '../tabs/home_tab.dart';
 import '../tabs/map_tab.dart';
 import '../tabs/pack_tab.dart';
@@ -45,40 +45,38 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     setState(() => _trip = updated);
   }
 
-  // ── Share / Join code ─────────────────────────
+  bool get _isAdmin => TripService.instance.currentUserIsAdmin(_trip);
+
+  // ── Admin-only share ──────────────────────────
   Future<void> _onShare() async {
     final ar = AppSettings.of(context).isArabic;
+    final code = _trip.joinCode;
+    final link = 'https://rihla.app/join/$code';
 
-    if (_trip.isPublic) {
-      _showJoinCode(ar);
-      return;
-    }
-
-    final paid = await showTripPaywall(
-      context,
-      isArabic: ar,
-      type: PaywallType.share,
-    );
-    if (!mounted) return;
-
-    if (paid) {
+    // Ensure trip is marked public
+    if (!_trip.isPublic) {
       await TripService.instance.markPublic(_trip.id);
       setState(() => _trip = _trip.copyWith(isPublic: true));
-      _showJoinCode(ar);
     }
+
+    if (!mounted) return;
+
+    // Show share sheet + bottom sheet with code
+    _showShareSheet(ar, code, link);
   }
 
-  void _showJoinCode(bool ar) {
-    final fontFamily =
-        ar ? GoogleFonts.cairo().fontFamily : GoogleFonts.pangolin().fontFamily;
+  void _showShareSheet(bool ar, String code, String link) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: RihlaColors.saharaSand,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
         child: Column(
@@ -87,76 +85,92 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             Container(
               width: 40,
               height: 4,
-              margin: const EdgeInsets.only(bottom: 24),
+              margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
-                color: RihlaColors.jungleGreen.withValues(alpha: 0.25),
+                color: cs.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Icon(Icons.share_rounded,
-                size: 48, color: RihlaColors.jungleGreen),
-            const SizedBox(height: 16),
-            Text(ar ? 'رمز الانضمام' : 'Join Code',
-                style: TextStyle(
-                    fontFamily: fontFamily,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: RihlaColors.jungleGreen)),
+            Icon(Icons.share_rounded, size: 40, color: cs.primary),
             const SizedBox(height: 12),
             Text(
-                ar
-                    ? 'شارك هذا الرمز مع أصدقائك:'
-                    : 'Share this code with your friends:',
-                style: TextStyle(
-                    fontFamily: fontFamily,
-                    fontSize: 14,
-                    color:
-                        RihlaColors.jungleGreenDark.withValues(alpha: 0.6)),
-                textAlign: TextAlign.center),
+              ar ? 'شارك الرحلة' : 'Share Trip',
+              style: tt.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              ar
+                  ? 'شارك هذا الرابط مع أصدقائك:'
+                  : 'Share this link with your friends:',
+              style: tt.bodyMedium?.copyWith(
+                color: cs.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
             const SizedBox(height: 20),
+
+            // Code display
             GestureDetector(
               onTap: () {
-                Clipboard.setData(ClipboardData(text: _trip.joinCode));
+                Clipboard.setData(ClipboardData(text: code));
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                      content: Text(ar ? 'تم النسخ!' : 'Copied!'),
-                      backgroundColor: RihlaColors.jungleGreen),
+                    content: Text(ar ? 'تم النسخ!' : 'Copied!'),
+                    backgroundColor: R.success,
+                  ),
                 );
               },
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 14),
                 decoration: BoxDecoration(
-                  color: RihlaColors.jungleGreen.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                      color:
-                          RihlaColors.jungleGreen.withValues(alpha: 0.2)),
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(R.radiusMd),
+                  border: Border.all(color: cs.outlineVariant),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_trip.joinCode,
-                        style: TextStyle(
-                            fontFamily: GoogleFonts.pangolin().fontFamily,
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            color: RihlaColors.sunsetOrange,
-                            letterSpacing: 6)),
+                    Text(
+                      code,
+                      style: GoogleFonts.inter(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: cs.primary,
+                        letterSpacing: 6,
+                      ),
+                    ),
                     const SizedBox(width: 12),
                     Icon(Icons.copy_rounded,
-                        color:
-                            RihlaColors.jungleGreen.withValues(alpha: 0.5)),
+                        color: cs.onSurfaceVariant),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            // Share button (native)
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(ar ? 'تم' : 'Done')),
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Share.share(
+                    ar
+                        ? 'انضم لرحلتي على Rihla! الرمز: $code\n$link'
+                        : 'Join my trip on Rihla! Code: $code\n$link',
+                  );
+                },
+                icon: const Icon(Icons.send_rounded),
+                label: Text(ar ? 'مشاركة الرابط' : 'Share Link'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(ar ? 'تم' : 'Done'),
+              ),
             ),
           ],
         ),
@@ -166,10 +180,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final settings = AppSettings.of(context);
-    final ar = settings.isArabic;
-    final fontFamily =
-        ar ? GoogleFonts.cairo().fontFamily : GoogleFonts.pangolin().fontFamily;
+    final ar = AppSettings.of(context).isArabic;
 
     return Scaffold(
       appBar: AppBar(
@@ -180,41 +191,19 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
         title: Text(
           _trip.title,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontFamily: fontFamily),
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-                _trip.isPublic ? Icons.group_rounded : Icons.share_rounded),
-            tooltip: ar ? 'مشاركة' : 'Share',
-            onPressed: _onShare,
-          ),
+          // Share icon — ONLY visible to admin
+          if (_isAdmin)
+            IconButton(
+              icon: const Icon(Icons.share_rounded),
+              tooltip: ar ? 'مشاركة' : 'Share',
+              onPressed: _onShare,
+            ),
           const SettingsToggles(),
         ],
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [RihlaColors.jungleGreenDark, RihlaColors.jungleGreen],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
         bottom: TabBar(
           controller: _tabCtrl,
-          indicatorColor: RihlaColors.sunsetOrange,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          labelStyle: TextStyle(
-            fontFamily: fontFamily,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-          unselectedLabelStyle: TextStyle(
-            fontFamily: fontFamily,
-            fontSize: 12,
-          ),
           isScrollable: true,
           tabAlignment: TabAlignment.center,
           tabs: [
@@ -242,7 +231,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           ],
         ),
       ),
-
       body: TabBarView(
         controller: _tabCtrl,
         children: [

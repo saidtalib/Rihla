@@ -1,15 +1,18 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_options.dart';
 import 'core/app_settings.dart';
-import 'core/theme.dart';
 import 'core/monetization_manager.dart';
+import 'services/auth_service.dart';
 import 'services/payment_service.dart';
+import 'ui/screens/confirm_profile_screen.dart';
 import 'ui/screens/home_screen.dart';
+import 'ui/screens/login_screen.dart';
+import 'ui/theme/app_theme.dart';
 import 'ui/widgets/settings_toggles.dart';
 
 // ──────────────────────────────────────────────
@@ -20,33 +23,21 @@ Future<void> main() async {
 
   // 1. Firebase Core
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform);
     debugPrint('[main] Firebase initialised ✓');
   } catch (e) {
     debugPrint('[main] Firebase init skipped: $e');
   }
 
-  // 2. Anonymous sign-in (gives us a real UID for Firestore)
-  try {
-    final auth = FirebaseAuth.instance;
-    if (auth.currentUser == null) {
-      await auth.signInAnonymously();
-      debugPrint('[main] Signed in anonymously: ${auth.currentUser?.uid}');
-    } else {
-      debugPrint('[main] Already signed in: ${auth.currentUser?.uid}');
-    }
-  } catch (e) {
-    debugPrint('[main] Anonymous auth skipped: $e');
-  }
-
-  // 3. RevenueCat
+  // 2. RevenueCat
   try {
     await PaymentService.instance.init();
   } catch (e) {
     debugPrint('[main] RevenueCat init skipped: $e');
   }
 
-  // 4. AdMob
+  // 3. AdMob
   if (!kIsWeb) {
     try {
       await MonetizationManager.instance.init();
@@ -93,46 +84,128 @@ class _RihlaAppState extends State<RihlaApp> {
             child: child!,
           );
         },
-        home: const MainScreen(),
+        home: const _AuthGate(),
       ),
     );
   }
 }
 
 // ──────────────────────────────────────────────
-//  Main Screen  (AppBar + Home — no bottom nav)
+//  Auth Gate — routes based on auth state
+// ──────────────────────────────────────────────
+class _AuthGate extends StatelessWidget {
+  const _AuthGate();
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: AuthService.instance.authStateChanges,
+      builder: (context, snap) {
+        // Loading
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final user = snap.data;
+
+        // Not signed in → Login
+        if (user == null) {
+          return const LoginScreen();
+        }
+
+        // Signed in but profile incomplete → Onboarding
+        if (!AuthService.instance.isProfileComplete) {
+          return const ConfirmProfileScreen();
+        }
+
+        // Signed in and profile complete → Main app
+        // Sync profile on entry
+        AuthService.instance.syncUserToFirestore();
+        return const MainScreen();
+      },
+    );
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Main Screen (AppBar + Home — no bottom nav)
 // ──────────────────────────────────────────────
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final settings = AppSettings.of(context);
+    final ar = settings.isArabic;
+    final cs = Theme.of(context).colorScheme;
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(
         leading: Padding(
           padding: const EdgeInsets.only(left: 12),
           child: Center(
-            child: Text('\ud83c\udf0d', style: const TextStyle(fontSize: 26)),
+            child: Text('🌍', style: const TextStyle(fontSize: 26)),
           ),
         ),
         title: Text(
           'Rihla',
-          style: GoogleFonts.pangolin(
-            fontSize: 26,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
+          style: GoogleFonts.inter(
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.5,
           ),
         ),
-        actions: const [SettingsToggles()],
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [RihlaColors.jungleGreenDark, RihlaColors.jungleGreen],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        actions: [
+          const SettingsToggles(),
+          // Profile avatar / sign out
+          PopupMenuButton<String>(
+            offset: const Offset(0, 48),
+            onSelected: (val) {
+              if (val == 'signout') {
+                AuthService.instance.signOut();
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Text(
+                  user?.displayName ?? user?.email ?? '',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'signout',
+                child: Row(
+                  children: [
+                    const Icon(Icons.logout_rounded, size: 18, color: Colors.red),
+                    const SizedBox(width: 8),
+                    Text(ar ? 'تسجيل خروج' : 'Sign Out',
+                        style: const TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: cs.surfaceContainerHighest,
+                backgroundImage: (user?.photoURL != null &&
+                        user!.photoURL!.isNotEmpty)
+                    ? NetworkImage(user.photoURL!)
+                    : null,
+                child: (user?.photoURL == null || user!.photoURL!.isEmpty)
+                    ? Icon(Icons.person_rounded,
+                        size: 18, color: cs.onSurfaceVariant)
+                    : null,
+              ),
             ),
           ),
-        ),
+        ],
       ),
       body: const HomeScreen(),
     );

@@ -1,8 +1,6 @@
-import 'dart:io';
-
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../core/app_settings.dart';
 import '../../core/theme.dart';
@@ -22,7 +20,6 @@ class ChatTab extends StatefulWidget {
 class _ChatTabState extends State<ChatTab> with AutomaticKeepAliveClientMixin {
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
-  final _picker = ImagePicker();
   bool _sending = false;
 
   @override
@@ -49,11 +46,16 @@ class _ChatTabState extends State<ChatTab> with AutomaticKeepAliveClientMixin {
   }
 
   Future<void> _pickAndSendPhoto() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (file == null) return;
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final picked = result.files.first;
+    if (picked.bytes == null) return;
     setState(() => _sending = true);
     try {
-      await ChatService.instance.sendPhoto(widget.trip.id, File(file.path));
+      await ChatService.instance.sendPhoto(widget.trip.id, picked.bytes!, picked.name);
       _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
