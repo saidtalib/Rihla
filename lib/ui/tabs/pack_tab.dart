@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/app_settings.dart';
-import '../../core/theme.dart';
 import '../../models/trip.dart';
 import '../../services/trip_service.dart';
+import '../../ui/theme/app_theme.dart';
 import '../screens/social_chat_screen.dart';
 
 /// "The Pack" tab: Combined Chat + Member management.
@@ -25,64 +24,97 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
   bool get wantKeepAlive => true;
 
   String get _myUid => TripService.instance.currentUserId;
-  bool get _isAdmin => TripService.instance.currentUserIsAdmin(widget.trip);
+  Trip get _trip => widget.trip;
 
   // ── Promote member to admin ─────────────────
   Future<void> _promoteToAdmin(String memberId) async {
     final ar = AppSettings.of(context).isArabic;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(ar ? 'ترقية لمشرف؟' : 'Promote to Admin?'),
-        content: Text(ar
-            ? 'سيتمكن هذا العضو من إدارة الرحلة'
-            : 'This member will be able to manage the trip'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ar ? 'إلغاء' : 'Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(ar ? 'ترقية' : 'Promote')),
-        ],
-      ),
+    final confirmed = await _confirmDialog(
+      title: ar ? 'ترقية لمشرف؟' : 'Promote to Admin?',
+      content: ar
+          ? 'سيتمكن هذا العضو من إدارة الرحلة'
+          : 'This member will be able to manage the trip',
+      confirmLabel: ar ? 'ترقية' : 'Promote',
+      isDestructive: false,
     );
-    if (confirmed != true) return;
-    await TripService.instance.promoteToAdmin(widget.trip.id, memberId);
-    final updatedMembers = Map<String, String>.from(widget.trip.members);
-    updatedMembers[memberId] = 'admin';
-    widget.onTripUpdated(widget.trip.copyWith(members: updatedMembers));
+    if (!confirmed) return;
+    await TripService.instance.promoteToAdmin(_trip.id, memberId);
+    final m = Map<String, String>.from(_trip.members);
+    m[memberId] = 'admin';
+    widget.onTripUpdated(_trip.copyWith(members: m));
+  }
+
+  // ── Demote admin to member (creator only) ───
+  Future<void> _demoteToMember(String memberId) async {
+    final ar = AppSettings.of(context).isArabic;
+    final confirmed = await _confirmDialog(
+      title: ar ? 'تخفيض من مشرف؟' : 'Demote Admin?',
+      content: ar
+          ? 'سيصبح هذا المشرف عضوًا عاديًا'
+          : 'This admin will become a regular member',
+      confirmLabel: ar ? 'تخفيض' : 'Demote',
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+    await TripService.instance.demoteToMember(_trip.id, memberId);
+    final m = Map<String, String>.from(_trip.members);
+    m[memberId] = 'member';
+    widget.onTripUpdated(_trip.copyWith(members: m));
   }
 
   // ── Remove member ───────────────────────────
   Future<void> _removeMember(String memberId) async {
     final ar = AppSettings.of(context).isArabic;
-    final confirmed = await showDialog<bool>(
+    final role = _trip.isAdmin(memberId)
+        ? (ar ? 'المشرف' : 'Admin')
+        : (ar ? 'العضو' : 'Member');
+    final name = memberId.length >= 6 ? memberId.substring(0, 6) : memberId;
+
+    final confirmed = await _confirmDialog(
+      title: ar ? 'إزالة $role؟' : 'Remove $role?',
+      content: ar
+          ? 'هل أنت متأكد من إزالة $role $name من الرحلة؟'
+          : 'Are you sure you want to remove $role $name from the trip?',
+      confirmLabel: ar ? 'إزالة' : 'Remove',
+      isDestructive: true,
+    );
+    if (!confirmed) return;
+    await TripService.instance.removeMember(_trip.id, memberId);
+    final m = Map<String, String>.from(_trip.members)..remove(memberId);
+    final p = List<String>.from(_trip.paidMembers)..remove(memberId);
+    widget.onTripUpdated(_trip.copyWith(members: m, paidMembers: p));
+  }
+
+  Future<bool> _confirmDialog({
+    required String title,
+    required String content,
+    required String confirmLabel,
+    required bool isDestructive,
+  }) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(ar ? 'إزالة العضو؟' : 'Remove Member?'),
-        content: Text(ar
-            ? 'سيتم إزالة هذا العضو من الرحلة'
-            : 'This member will be removed from the trip'),
+        title: Text(title),
+        content: Text(content),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ar ? 'إلغاء' : 'Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(AppSettings.of(context).isArabic ? 'إلغاء' : 'Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text(ar ? 'إزالة' : 'Remove',
-                  style: const TextStyle(color: Colors.red))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              confirmLabel,
+              style: TextStyle(
+                color: isDestructive ? R.error : null,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );
-    if (confirmed != true) return;
-    await TripService.instance.removeMember(widget.trip.id, memberId);
-    final updatedMembers = Map<String, String>.from(widget.trip.members)
-      ..remove(memberId);
-    final updatedPaid = List<String>.from(widget.trip.paidMembers)
-      ..remove(memberId);
-    widget.onTripUpdated(
-        widget.trip.copyWith(members: updatedMembers, paidMembers: updatedPaid));
+    return result == true;
   }
 
   @override
@@ -90,39 +122,27 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
     super.build(context);
     final settings = AppSettings.of(context);
     final ar = settings.isArabic;
-    final dark = settings.isDarkMode;
-    final fontFamily =
-        ar ? GoogleFonts.cairo().fontFamily : GoogleFonts.pangolin().fontFamily;
-    final headingColor =
-        dark ? RihlaColors.saharaSand : RihlaColors.jungleGreen;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return Column(
       children: [
-        // ── Members toggle bar ────────────────
+        // ── Toggle bar ──────────────────────────
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: dark ? RihlaColors.darkCard : RihlaColors.saharaSand,
-            boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05), blurRadius: 4)
-            ],
+            color: cs.surfaceContainerLowest,
+            border: Border(bottom: BorderSide(color: cs.outlineVariant)),
           ),
           child: Row(
             children: [
-              Icon(Icons.groups_rounded,
-                  color: RihlaColors.sunsetOrange, size: 20),
+              Icon(Icons.groups_rounded, color: cs.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 ar
-                    ? 'العزوة (${widget.trip.paidMembers.length})'
-                    : 'The Pack (${widget.trip.paidMembers.length})',
-                style: TextStyle(
-                  fontFamily: fontFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: headingColor,
-                ),
+                    ? 'العزوة (${_trip.paidMembers.length})'
+                    : 'The Pack (${_trip.paidMembers.length})',
+                style: tt.titleSmall,
               ),
               const Spacer(),
               TextButton.icon(
@@ -137,22 +157,22 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
                   _showMembers
                       ? (ar ? 'الدردشة' : 'Chat')
                       : (ar ? 'إدارة المجموعة' : 'Manage Group'),
-                  style: TextStyle(fontFamily: fontFamily, fontSize: 12),
+                  style: tt.labelSmall,
                 ),
               ),
             ],
           ),
         ),
 
-        // ── Content area ──────────────────────
+        // ── Content area ────────────────────────
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: _showMembers
-                ? _buildMemberList(ar, dark, fontFamily!, headingColor)
+                ? _buildMemberList(ar, cs, tt)
                 : SocialChatScreen(
                     key: const ValueKey('social_chat'),
-                    trip: widget.trip,
+                    trip: _trip,
                     onTripUpdated: widget.onTripUpdated,
                   ),
           ),
@@ -161,11 +181,12 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
     );
   }
 
-  // ── Member list ───────────────────────────────
-  Widget _buildMemberList(
-      bool ar, bool dark, String fontFamily, Color headingColor) {
-    final members = widget.trip.members;
-    final memberIds = members.keys.toList();
+  // ═════════════════════════════════════════════
+  //  Member List with Role-Based Actions
+  // ═════════════════════════════════════════════
+  Widget _buildMemberList(bool ar, ColorScheme cs, TextTheme tt) {
+    final memberIds = _trip.members.keys.toList();
+    final canManage = _trip.canManageMembers(_myUid);
 
     return ListView.builder(
       key: const ValueKey('members'),
@@ -173,34 +194,41 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
       itemCount: memberIds.length,
       itemBuilder: (context, i) {
         final uid = memberIds[i];
-        final role = members[uid] ?? 'member';
-        final isThisAdmin = role == 'admin' || uid == widget.trip.adminId;
+        final isCreator = _trip.isCreator(uid);
+        final isThisAdmin = _trip.isAdmin(uid);
         final isMe = uid == _myUid;
-        final isCreator = uid == widget.trip.adminId;
+
+        // Determine which actions the current user can perform on this member
+        final showRemove = canManage && _trip.canRemove(_myUid, uid);
+        final showPromote = canManage && _trip.canPromote(_myUid, uid);
+        final showDemote = canManage && _trip.canDemote(_myUid, uid);
+        final hasAnyAction = showRemove || showPromote || showDemote;
 
         return Card(
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: isThisAdmin
-                  ? RihlaColors.sunsetOrange.withValues(alpha: 0.15)
-                  : RihlaColors.jungleGreen.withValues(alpha: 0.1),
+              backgroundColor: isCreator
+                  ? R.warning.withValues(alpha: 0.15)
+                  : isThisAdmin
+                      ? cs.primary.withValues(alpha: 0.12)
+                      : cs.surfaceContainerHighest,
               child: Icon(
-                isThisAdmin ? Icons.star_rounded : Icons.person_rounded,
-                color: isThisAdmin
-                    ? RihlaColors.sunsetOrange
-                    : RihlaColors.jungleGreen,
+                isCreator
+                    ? Icons.shield_rounded
+                    : isThisAdmin
+                        ? Icons.star_rounded
+                        : Icons.person_rounded,
+                color: isCreator
+                    ? R.warning
+                    : isThisAdmin
+                        ? cs.primary
+                        : cs.onSurfaceVariant,
                 size: 22,
               ),
             ),
             title: Text(
-              isMe
-                  ? (ar ? 'أنت' : 'You')
-                  : '${ar ? "عضو" : "Member"} ${uid.substring(0, 6)}',
-              style: TextStyle(
-                fontFamily: fontFamily,
-                fontWeight: FontWeight.w600,
-                color: dark ? RihlaColors.darkText : RihlaColors.jungleGreenDark,
-              ),
+              isMe ? (ar ? 'أنت' : 'You') : uid.substring(0, 6),
+              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
               isCreator
@@ -208,43 +236,56 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
                   : isThisAdmin
                       ? (ar ? '⭐ مشرف' : '⭐ Admin')
                       : (ar ? 'عضو' : 'Member'),
-              style: TextStyle(
-                fontFamily: fontFamily,
-                fontSize: 12,
-                color: headingColor.withValues(alpha: 0.6),
+              style: tt.bodySmall?.copyWith(
+                color: cs.onSurface.withValues(alpha: 0.5),
               ),
             ),
-            trailing: (_isAdmin && !isMe && !isCreator)
+            trailing: hasAnyAction
                 ? PopupMenuButton<String>(
                     onSelected: (action) {
                       if (action == 'promote') _promoteToAdmin(uid);
+                      if (action == 'demote') _demoteToMember(uid);
                       if (action == 'remove') _removeMember(uid);
                     },
                     itemBuilder: (_) => [
-                      if (!isThisAdmin)
+                      if (showPromote)
                         PopupMenuItem(
                           value: 'promote',
                           child: Row(
                             children: [
                               Icon(Icons.arrow_upward_rounded,
-                                  size: 18, color: RihlaColors.sunsetOrange),
+                                  size: 18, color: cs.primary),
                               const SizedBox(width: 8),
                               Text(ar ? 'ترقية لمشرف' : 'Promote to Admin'),
                             ],
                           ),
                         ),
-                      PopupMenuItem(
-                        value: 'remove',
-                        child: Row(
-                          children: [
-                            Icon(Icons.remove_circle_outline_rounded,
-                                size: 18, color: Colors.red),
-                            const SizedBox(width: 8),
-                            Text(ar ? 'إزالة' : 'Remove',
-                                style: const TextStyle(color: Colors.red)),
-                          ],
+                      if (showDemote)
+                        PopupMenuItem(
+                          value: 'demote',
+                          child: Row(
+                            children: [
+                              Icon(Icons.arrow_downward_rounded,
+                                  size: 18, color: R.warning),
+                              const SizedBox(width: 8),
+                              Text(ar ? 'تخفيض لعضو' : 'Demote to Member',
+                                  style: TextStyle(color: R.warning)),
+                            ],
+                          ),
                         ),
-                      ),
+                      if (showRemove)
+                        PopupMenuItem(
+                          value: 'remove',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.remove_circle_outline_rounded,
+                                  size: 18, color: R.error),
+                              const SizedBox(width: 8),
+                              Text(ar ? 'إزالة من الرحلة' : 'Remove from Trip',
+                                  style: const TextStyle(color: R.error)),
+                            ],
+                          ),
+                        ),
                     ],
                   )
                 : null,

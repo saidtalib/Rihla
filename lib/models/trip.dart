@@ -74,12 +74,16 @@ class Trip {
   final String id;
   final String title;
   final String description;
+
+  /// The original creator of the trip — cannot be removed or demoted.
   final String adminId;
   final String joinCode;
   final List<String> itinerary;
   final List<TripLocation> locations;
   final List<String> transportSuggestions;
-  final Map<String, String> members; // uid -> 'admin' | 'member'
+
+  /// uid -> 'admin' | 'member'
+  final Map<String, String> members;
   final bool isPublic;
   final List<String> paidMembers;
   final DateTime createdAt;
@@ -104,7 +108,8 @@ class Trip {
       members: Map<String, String>.from(d['members'] ?? {}),
       isPublic: d['is_public'] ?? false,
       paidMembers: List<String>.from(d['paid_members'] ?? []),
-      createdAt: (d['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt:
+          (d['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 
@@ -122,13 +127,64 @@ class Trip {
         'created_at': Timestamp.fromDate(createdAt),
       };
 
-  // ── Helpers ─────────────────────────────────
+  // ═════════════════════════════════════════════
+  //  Role & Permission Helpers
+  // ═════════════════════════════════════════════
 
+  /// Whether [uid] is the original trip creator.
+  bool isCreator(String uid) => uid == adminId;
+
+  /// Whether [uid] has the admin role (including the creator).
+  bool isAdmin(String uid) =>
+      uid == adminId || members[uid] == 'admin';
+
+  /// Whether [uid] has any access to this trip.
   bool hasAccess(String uid) =>
       uid == adminId || paidMembers.contains(uid);
 
-  bool isAdmin(String uid) =>
-      uid == adminId || members[uid] == 'admin';
+  /// Can [actorUid] remove [targetUid] from the trip?
+  ///
+  /// Rules:
+  /// - Creator can never be removed.
+  /// - Creator can remove anyone (admins + members).
+  /// - Admins can remove regular members but NOT other admins.
+  /// - Regular members cannot remove anyone.
+  bool canRemove(String actorUid, String targetUid) {
+    if (targetUid == adminId) return false; // creator is untouchable
+    if (actorUid == targetUid) return false; // can't remove yourself
+    if (actorUid == adminId) return true; // creator can remove anyone
+    if (isAdmin(actorUid) && !isAdmin(targetUid)) return true; // admin removes member
+    return false;
+  }
+
+  /// Can [actorUid] promote [targetUid] to admin?
+  ///
+  /// Rules:
+  /// - Only admins can promote.
+  /// - Can't promote someone who's already admin.
+  bool canPromote(String actorUid, String targetUid) {
+    if (!isAdmin(actorUid)) return false; // only admins can promote
+    if (isAdmin(targetUid)) return false; // already admin
+    return true;
+  }
+
+  /// Can [actorUid] demote [targetUid] from admin to member?
+  ///
+  /// Rules:
+  /// - Only the creator can demote admins.
+  /// - Creator can never be demoted.
+  bool canDemote(String actorUid, String targetUid) {
+    if (actorUid != adminId) return false; // only creator can demote
+    if (targetUid == adminId) return false; // creator can't be demoted
+    if (!isAdmin(targetUid)) return false; // target isn't admin
+    return true;
+  }
+
+  /// Whether [actorUid] can see manage actions (promote/remove/demote)
+  /// for any member at all.
+  bool canManageMembers(String actorUid) => isAdmin(actorUid);
+
+  // ── copyWith ──────────────────────────────────
 
   Trip copyWith({
     String? title,

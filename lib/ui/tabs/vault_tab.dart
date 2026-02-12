@@ -1,15 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_settings.dart';
-import '../../core/theme.dart';
 import '../../models/trip.dart';
 import '../../services/chat_service.dart';
 import '../../services/trip_service.dart';
+import '../../ui/theme/app_theme.dart';
 
-/// Tab 4: Vault — gallery of all files (images + PDFs) synced from chat.
+/// Tab: Vault — gallery of all files (images + PDFs) synced from chat.
 class VaultTab extends StatefulWidget {
   const VaultTab({super.key, required this.trip});
   final Trip trip;
@@ -18,12 +17,24 @@ class VaultTab extends StatefulWidget {
   State<VaultTab> createState() => _VaultTabState();
 }
 
-class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin {
+class _VaultTabState extends State<VaultTab>
+    with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
-  bool get _isAdmin => TripService.instance.currentUserIsAdmin(widget.trip);
+  Trip get _trip => widget.trip;
   String get _myUid => TripService.instance.currentUserId;
+  bool get _isAdmin => _trip.isAdmin(_myUid);
+
+  /// Whether the current user can delete this vault item.
+  ///
+  /// - Admins can delete any file.
+  /// - Regular users can only delete their own files.
+  bool _canDeleteItem(Map<String, dynamic> item) {
+    if (_isAdmin) return true;
+    final uploaderId = item['uploaded_by_id'] as String? ?? '';
+    return uploaderId == _myUid;
+  }
 
   Future<void> _openFile(String url) async {
     final uri = Uri.parse(url);
@@ -34,19 +45,22 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
 
   Future<void> _deleteVaultItem(Map<String, dynamic> item) async {
     final ar = AppSettings.of(context).isArabic;
-    final uploaderId = item['uploaded_by_id'] as String? ?? '';
-    if (uploaderId != _myUid && !_isAdmin) {
+
+    // Double-check permission
+    if (!_canDeleteItem(item)) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(ar
               ? 'لا يمكنك حذف ملفات الآخرين'
               : 'You can only delete your own files'),
-          backgroundColor: Colors.red,
+          backgroundColor: R.error,
         ),
       );
       return;
     }
 
+    // Confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -56,12 +70,16 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
             : 'This action cannot be undone.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text(ar ? 'إلغاء' : 'Cancel')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ar ? 'إلغاء' : 'Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(ar ? 'حذف' : 'Delete',
-                style: const TextStyle(color: Colors.red)),
+            child: Text(
+              ar ? 'حذف' : 'Delete',
+              style: const TextStyle(
+                  color: R.error, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -69,12 +87,11 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
 
     if (confirmed != true || !mounted) return;
 
-    // Delete from vault sub-collection
     final docId = item['id'] as String?;
     if (docId != null) {
       await FirebaseFirestore.instance
           .collection('trips')
-          .doc(widget.trip.id)
+          .doc(_trip.id)
           .collection('vault')
           .doc(docId)
           .delete();
@@ -86,17 +103,16 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
     super.build(context);
     final settings = AppSettings.of(context);
     final ar = settings.isArabic;
-    final dark = settings.isDarkMode;
-    final fontFamily =
-        ar ? GoogleFonts.cairo().fontFamily : GoogleFonts.pangolin().fontFamily;
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: ChatService.instance.vaultStream(widget.trip.id),
+      stream: ChatService.instance.vaultStream(_trip.id),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(
-              child:
-                  CircularProgressIndicator(color: RihlaColors.jungleGreen));
+          return Center(
+            child: CircularProgressIndicator(color: cs.primary),
+          );
         }
 
         final items = snap.data ?? [];
@@ -108,29 +124,18 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
               children: [
                 Icon(Icons.folder_open_rounded,
                     size: 64,
-                    color: RihlaColors.sunsetOrange.withValues(alpha: 0.4)),
+                    color: cs.onSurface.withValues(alpha: 0.25)),
                 const SizedBox(height: 16),
-                Text(
-                  ar ? 'الخزنة فارغة' : 'Vault is empty',
-                  style: TextStyle(
-                      fontFamily: fontFamily,
-                      fontSize: 18,
-                      color: dark
-                          ? RihlaColors.darkText
-                          : RihlaColors.jungleGreen),
-                ),
+                Text(ar ? 'الخزنة فارغة' : 'Vault is empty',
+                    style: tt.titleMedium),
                 const SizedBox(height: 8),
                 Text(
                   ar
                       ? 'الملفات المرسلة في الدردشة تظهر هنا تلقائيًا'
                       : 'Files sent in chat appear here automatically',
-                  style: TextStyle(
-                      fontFamily: fontFamily,
-                      fontSize: 13,
-                      color: (dark
-                              ? RihlaColors.darkText
-                              : RihlaColors.jungleGreenDark)
-                          .withValues(alpha: 0.5)),
+                  style: tt.bodySmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -138,14 +143,13 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
           );
         }
 
-        // Separate images and PDFs
         final images =
             items.where((i) => i['file_type'] == 'image').toList();
         final pdfs = items.where((i) => i['file_type'] == 'pdf').toList();
 
         return CustomScrollView(
           slivers: [
-            // ── Images section ─────────────────
+            // ── Images section ────────────────────
             if (images.isNotEmpty) ...[
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -153,20 +157,14 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
                   child: Row(
                     children: [
                       Icon(Icons.photo_library_rounded,
-                          color: RihlaColors.sunsetOrange, size: 20),
+                          color: cs.primary, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         ar
                             ? 'الصور (${images.length})'
                             : 'Photos (${images.length})',
-                        style: TextStyle(
-                          fontFamily: fontFamily,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: dark
-                              ? RihlaColors.saharaSand
-                              : RihlaColors.jungleGreen,
-                        ),
+                        style: tt.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ],
                   ),
@@ -182,15 +180,14 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
                     mainAxisSpacing: 6,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (context, i) =>
-                        _buildImageTile(images[i], dark, fontFamily!),
+                    (context, i) => _buildImageTile(images[i], cs, tt),
                     childCount: images.length,
                   ),
                 ),
               ),
             ],
 
-            // ── PDFs section ───────────────────
+            // ── PDFs section ──────────────────────
             if (pdfs.isNotEmpty) ...[
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
@@ -198,20 +195,14 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
                   child: Row(
                     children: [
                       Icon(Icons.picture_as_pdf_rounded,
-                          color: RihlaColors.sunsetOrange, size: 20),
+                          color: R.error, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         ar
                             ? 'مستندات PDF (${pdfs.length})'
                             : 'PDF Documents (${pdfs.length})',
-                        style: TextStyle(
-                          fontFamily: fontFamily,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: dark
-                              ? RihlaColors.saharaSand
-                              : RihlaColors.jungleGreen,
-                        ),
+                        style: tt.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
                       ),
                     ],
                   ),
@@ -219,14 +210,12 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
               ),
               SliverList(
                 delegate: SliverChildBuilderDelegate(
-                  (context, i) =>
-                      _buildPdfTile(pdfs[i], dark, fontFamily!, ar),
+                  (context, i) => _buildPdfTile(pdfs[i], ar, cs, tt),
                   childCount: pdfs.length,
                 ),
               ),
             ],
 
-            // Bottom padding
             const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
           ],
         );
@@ -234,16 +223,17 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
     );
   }
 
+  // ── Image tile ──────────────────────────────
   Widget _buildImageTile(
-      Map<String, dynamic> item, bool dark, String fontFamily) {
+      Map<String, dynamic> item, ColorScheme cs, TextTheme tt) {
     final url = item['file_url'] as String? ?? '';
     final uploaderName = item['uploaded_by_name'] as String? ?? '';
+    final canDelete = _canDeleteItem(item);
 
     return GestureDetector(
       onTap: () => _openFullScreen(url, uploaderName),
-      onLongPress: () => _deleteVaultItem(item),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(R.radiusMd),
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -253,20 +243,20 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
               loadingBuilder: (_, child, progress) {
                 if (progress == null) return child;
                 return Container(
-                  color: dark
-                      ? RihlaColors.darkCard
-                      : RihlaColors.saharaSandDark,
-                  child: const Center(
-                      child: CircularProgressIndicator(
-                          color: RihlaColors.sunsetOrange, strokeWidth: 2)),
+                  color: cs.surfaceContainerHighest,
+                  child: Center(
+                    child: CircularProgressIndicator(
+                        color: cs.primary, strokeWidth: 2),
+                  ),
                 );
               },
               errorBuilder: (_, e, st) => Container(
-                color: Colors.grey.shade200,
-                child: const Center(
-                    child: Icon(Icons.broken_image_rounded, color: Colors.grey)),
+                color: cs.surfaceContainerHighest,
+                child: Icon(Icons.broken_image_rounded,
+                    color: cs.onSurfaceVariant),
               ),
             ),
+            // Uploader name overlay
             Positioned(
               bottom: 0,
               left: 0,
@@ -291,61 +281,75 @@ class _VaultTabState extends State<VaultTab> with AutomaticKeepAliveClientMixin 
                 ),
               ),
             ),
+            // Delete button — only visible if user has permission
+            if (canDelete)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Material(
+                  color: Colors.black38,
+                  borderRadius: BorderRadius.circular(16),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => _deleteVaultItem(item),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.delete_outline_rounded,
+                          color: Colors.white, size: 18),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
+  // ── PDF tile ────────────────────────────────
   Widget _buildPdfTile(
-      Map<String, dynamic> item, bool dark, String fontFamily, bool ar) {
+      Map<String, dynamic> item, bool ar, ColorScheme cs, TextTheme tt) {
     final url = item['file_url'] as String? ?? '';
     final fileName = item['file_name'] as String? ?? 'Document.pdf';
     final uploaderName = item['uploaded_by_name'] as String? ?? '';
+    final canDelete = _canDeleteItem(item);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Card(
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: RihlaColors.sunsetOrange.withValues(alpha: 0.12),
-            child: const Icon(Icons.picture_as_pdf_rounded,
-                color: RihlaColors.sunsetOrange),
+            backgroundColor: R.error.withValues(alpha: 0.08),
+            child: const Icon(Icons.picture_as_pdf_rounded, color: R.error),
           ),
           title: Text(
             fileName,
-            style: TextStyle(
-                fontFamily: fontFamily,
-                fontWeight: FontWeight.w600,
-                fontSize: 14),
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
             uploaderName,
-            style: TextStyle(
-                fontFamily: fontFamily,
-                fontSize: 12,
-                color: (dark
-                        ? RihlaColors.darkText
-                        : RihlaColors.jungleGreenDark)
-                    .withValues(alpha: 0.5)),
+            style: tt.bodySmall?.copyWith(
+              color: cs.onSurface.withValues(alpha: 0.5),
+            ),
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.open_in_new_rounded,
-                    color: RihlaColors.jungleGreen),
+                icon: Icon(Icons.open_in_new_rounded, color: cs.primary),
                 onPressed: () => _openFile(url),
                 tooltip: ar ? 'فتح' : 'Open',
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded,
-                    color: Colors.red, size: 20),
-                onPressed: () => _deleteVaultItem(item),
-                tooltip: ar ? 'حذف' : 'Delete',
-              ),
+              // Delete icon — only visible if user has permission
+              if (canDelete)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded,
+                      color: R.error, size: 20),
+                  onPressed: () => _deleteVaultItem(item),
+                  tooltip: ar ? 'حذف' : 'Delete',
+                ),
             ],
           ),
           onTap: () => _openFile(url),

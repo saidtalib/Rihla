@@ -153,6 +153,13 @@ class TripService {
     }).timeout(const Duration(seconds: 10));
   }
 
+  // ── Demote admin to regular member ────────────
+  Future<void> demoteToMember(String tripId, String memberId) async {
+    await _trips.doc(tripId).update({
+      'members.$memberId': 'member',
+    }).timeout(const Duration(seconds: 10));
+  }
+
   // ── Remove a member from trip ─────────────────
   Future<void> removeMember(String tripId, String memberId) async {
     await _trips.doc(tripId).update({
