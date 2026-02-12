@@ -25,15 +25,16 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // TODO: Replace these placeholder values with your real Firebase config.
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'YOUR-API-KEY',
-    appId: 'YOUR-APP-ID',
-    messagingSenderId: 'YOUR-SENDER-ID',
-    projectId: 'YOUR-PROJECT-ID',
-    authDomain: 'YOUR-AUTH-DOMAIN',
-    storageBucket: 'YOUR-STORAGE-BUCKET',
+    apiKey: 'AIzaSyBL1plYya4wr6-uvgLI3-oZNgaM3EA6cTw',
+    appId: '1:1033074555968:web:bb6ee6e0faea013b92f3a5',
+    messagingSenderId: '1033074555968',
+    projectId: 'rihla-app-almaw',
+    authDomain: 'rihla-app-almaw.firebaseapp.com',
+    storageBucket: 'rihla-app-almaw.firebasestorage.app',
   );
+
+  // TODO: Replace these placeholder values with your real Firebase config.
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBbiFIoQfTDkTrIkdwweFW8_RzjEsD1WEI',

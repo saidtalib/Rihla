@@ -100,7 +100,13 @@ class TripService {
       description: description,
       itinerary: result.dailyItinerary,
       locations: result.locations
-          .map((l) => TripLocation(name: l.name, lat: l.lat, lng: l.lng))
+          .map((l) => TripLocation(
+                name: l.name,
+                lat: l.lat,
+                lng: l.lng,
+                transportType: parseTransportType(l.transportType),
+                isOvernight: l.isOvernight,
+              ))
           .toList(),
       transportSuggestions: result.transportSuggestions,
     );

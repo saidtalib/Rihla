@@ -1,8 +1,6 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -12,39 +10,7 @@ import '../../core/app_settings.dart';
 import '../../core/theme.dart';
 import '../../models/trip.dart';
 
-// ─────────────────────────────────────────────────
-//  Safari-themed Google Map JSON Style
-//  Land → Sahara Sand, Nature → Jungle Green, hide POIs
-// ─────────────────────────────────────────────────
-const _safariMapStyle = '''
-[
-  {"elementType":"geometry","stylers":[{"color":"#f4ebd0"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#2D5A27"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#f4ebd0"},{"weight":2}]},
-  {"featureType":"water","elementType":"geometry.fill","stylers":[{"color":"#a8d5e2"}]},
-  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4a7a42"}]},
-  {"featureType":"landscape.natural","elementType":"geometry","stylers":[{"color":"#e8ddb8"}]},
-  {"featureType":"landscape.natural.terrain","elementType":"geometry","stylers":[{"color":"#d4c99a"}]},
-  {"featureType":"landscape.natural.landcover","elementType":"geometry","stylers":[{"color":"#2D5A27"}]},
-  {"featureType":"poi.park","elementType":"geometry.fill","stylers":[{"color":"#4A7A42"}]},
-  {"featureType":"poi.park","elementType":"labels.text.fill","stylers":[{"color":"#1B3A18"}]},
-  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#FF8C00"},{"weight":1.5}]},
-  {"featureType":"road.highway","elementType":"geometry.stroke","stylers":[{"color":"#cc7000"}]},
-  {"featureType":"road.arterial","elementType":"geometry","stylers":[{"color":"#e0d5b0"}]},
-  {"featureType":"road.local","elementType":"geometry","stylers":[{"color":"#ede3c4"}]},
-  {"featureType":"transit","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.business","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.government","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.medical","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.school","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.sports_complex","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi.attraction","elementType":"geometry","stylers":[{"color":"#c9b87c"}]},
-  {"featureType":"administrative.country","elementType":"geometry.stroke","stylers":[{"color":"#2D5A27"},{"weight":1.5}]},
-  {"featureType":"administrative.province","elementType":"geometry.stroke","stylers":[{"color":"#4A7A42"},{"weight":0.8}]}
-]
-''';
-
-/// Interactive Google Map with safari markers, route polyline & live location.
+/// Interactive Google Map with default layers, route polyline & live location.
 class MapTab extends StatefulWidget {
   const MapTab({super.key, required this.trip});
   final Trip trip;
@@ -55,13 +21,12 @@ class MapTab extends StatefulWidget {
 
 class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
   GoogleMapController? _mapController;
-  final Map<String, BitmapDescriptor> _iconCache = {};
-  Set<Marker> _markers = {};
-  bool _iconsReady = false;
+
+  // Map type (Default / Satellite / Terrain)
+  MapType _mapType = MapType.normal;
 
   // Live location state
   bool _liveLocationOn = false;
-  Position? _currentPosition;
   StreamSubscription<Position>? _positionStream;
 
   // Selected marker card
@@ -72,122 +37,53 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
   bool get wantKeepAlive => true;
 
   @override
-  void initState() {
-    super.initState();
-    _loadIcons();
-  }
-
-  @override
   void dispose() {
     _positionStream?.cancel();
     super.dispose();
   }
 
-  // ── Load custom marker icons ────────────────────
-  Future<void> _loadIcons() async {
-    const iconMap = {
-      'drive': 'assets/icons/jeep.png',
-      'flight': 'assets/icons/plane.png',
-      'train': 'assets/icons/train.png',
-      'ferry': 'assets/icons/ferry.png',
-      'tent': 'assets/icons/tent.png',
-    };
-
-    for (final entry in iconMap.entries) {
-      try {
-        final descriptor = await _loadScaledIcon(entry.value, 96);
-        _iconCache[entry.key] = descriptor;
-      } catch (e) {
-        debugPrint('[MapTab] Failed to load icon ${entry.key}: $e');
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _iconsReady = true;
-        _buildMarkers();
-      });
-    }
-  }
-
-  /// Load an asset image and scale it to [size] pixels.
-  Future<BitmapDescriptor> _loadScaledIcon(String assetPath, int size) async {
-    final data = await rootBundle.load(assetPath);
-    final codec = await ui.instantiateImageCodec(
-      data.buffer.asUint8List(),
-      targetWidth: size,
-      targetHeight: size,
-    );
-    final frame = await codec.getNextFrame();
-    final byteData =
-        await frame.image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(byteData!.buffer.asUint8List());
-  }
-
-  // ── Build markers from locations ────────────────
-  void _buildMarkers() {
+  // ── Markers (default colored pins) ──────────────
+  Set<Marker> get _markers {
     final locs = widget.trip.locations;
     final markers = <Marker>{};
 
     for (int i = 0; i < locs.length; i++) {
       final loc = locs[i];
-      final icon = _getMarkerIcon(loc, i);
-
       markers.add(Marker(
         markerId: MarkerId('loc_$i'),
         position: LatLng(loc.lat, loc.lng),
-        icon: icon,
+        icon: BitmapDescriptor.defaultMarkerWithHue(
+          i == 0
+              ? BitmapDescriptor.hueGreen
+              : i == locs.length - 1
+                  ? BitmapDescriptor.hueOrange
+                  : BitmapDescriptor.hueRed,
+        ),
+        infoWindow: InfoWindow(
+          title: loc.name,
+          snippet: '${_stopLabel(loc)} · ${i + 1}/${locs.length}',
+        ),
         onTap: () => _onMarkerTapped(loc, i),
       ));
     }
 
-    // Live location marker
-    if (_liveLocationOn && _currentPosition != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('user_live'),
-        position: LatLng(
-            _currentPosition!.latitude, _currentPosition!.longitude),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        infoWindow: const InfoWindow(title: 'You'),
-      ));
-    }
-
-    setState(() => _markers = markers);
+    return markers;
   }
 
-  BitmapDescriptor _getMarkerIcon(TripLocation loc, int index) {
-    if (!_iconsReady) {
-      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
-    }
-
-    // Overnight / hotel → tent
-    if (loc.isOvernight && _iconCache.containsKey('tent')) {
-      return _iconCache['tent']!;
-    }
-
-    // Transport-based icon
+  String _stopLabel(TripLocation loc) {
+    if (loc.isOvernight) return 'Overnight';
     switch (loc.transportType) {
       case TransportType.drive:
-        return _iconCache['drive'] ?? _fallbackIcon(index);
+        return 'Drive';
       case TransportType.flight:
-        return _iconCache['flight'] ?? _fallbackIcon(index);
+        return 'Flight';
       case TransportType.train:
-        return _iconCache['train'] ?? _fallbackIcon(index);
+        return 'Train';
       case TransportType.ferry:
-        return _iconCache['ferry'] ?? _fallbackIcon(index);
+        return 'Ferry';
       case TransportType.unknown:
-        return _fallbackIcon(index);
+        return 'Stop';
     }
-  }
-
-  BitmapDescriptor _fallbackIcon(int index) {
-    final total = widget.trip.locations.length;
-    if (index == 0) {
-      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
-    } else if (index == total - 1) {
-      return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
-    }
-    return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
   }
 
   // ── Polyline ────────────────────────────────────
@@ -199,7 +95,7 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
       Polyline(
         polylineId: const PolylineId('route'),
         points: points,
-        color: RihlaColors.jungleGreen,
+        color: RihlaColors.sunsetOrange,
         width: 4,
         patterns: [PatternItem.dash(18), PatternItem.gap(12)],
       ),
@@ -262,20 +158,15 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
     if (_liveLocationOn) {
       await _positionStream?.cancel();
       _positionStream = null;
-      setState(() {
-        _liveLocationOn = false;
-        _currentPosition = null;
-      });
-      _buildMarkers();
+      setState(() => _liveLocationOn = false);
       return;
     }
 
-    // Check permissions
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Please enable location services'),
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Please enable location services'),
         backgroundColor: Colors.red,
       ));
       return;
@@ -286,8 +177,8 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: const Text('Location permission denied'),
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Location permission denied'),
           backgroundColor: Colors.red,
         ));
         return;
@@ -296,8 +187,8 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
 
     if (permission == LocationPermission.deniedForever) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Location permission permanently denied'),
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Location permission permanently denied'),
         backgroundColor: Colors.red,
       ));
       return;
@@ -305,29 +196,62 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
 
     setState(() => _liveLocationOn = true);
 
-    // Get initial position
+    // The map's myLocationEnabled handles the blue dot automatically.
+    // We keep the stream alive so the dot updates in real-time.
     try {
-      final pos = await Geolocator.getCurrentPosition();
-      if (mounted) {
-        setState(() => _currentPosition = pos);
-        _buildMarkers();
-      }
+      await Geolocator.getCurrentPosition();
     } catch (e) {
       debugPrint('[MapTab] Error getting position: $e');
     }
 
-    // Stream updates
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
       ),
-    ).listen((pos) {
-      if (mounted) {
-        setState(() => _currentPosition = pos);
-        _buildMarkers();
+    ).listen((_) {});
+  }
+
+  // ── Map type toggle ─────────────────────────────
+  void _cycleMapType() {
+    setState(() {
+      switch (_mapType) {
+        case MapType.normal:
+          _mapType = MapType.satellite;
+          break;
+        case MapType.satellite:
+          _mapType = MapType.terrain;
+          break;
+        default:
+          _mapType = MapType.normal;
       }
     });
+  }
+
+  String _mapTypeLabel(bool ar) {
+    switch (_mapType) {
+      case MapType.normal:
+        return ar ? 'عادي' : 'Default';
+      case MapType.satellite:
+        return ar ? 'قمر صناعي' : 'Satellite';
+      case MapType.terrain:
+        return ar ? 'تضاريس' : 'Terrain';
+      default:
+        return '';
+    }
+  }
+
+  IconData get _mapTypeIcon {
+    switch (_mapType) {
+      case MapType.normal:
+        return Icons.map_outlined;
+      case MapType.satellite:
+        return Icons.satellite_alt_rounded;
+      case MapType.terrain:
+        return Icons.terrain_rounded;
+      default:
+        return Icons.map_outlined;
+    }
   }
 
   // ── Transport icon for the bottom card ──────────
@@ -382,31 +306,45 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
 
     return Stack(
       children: [
-        // ── Google Map ────────────────────────────
+        // ── Google Map (default style, full gestures) ──
         GoogleMap(
           initialCameraPosition:
               CameraPosition(target: _initialCenter, zoom: 5),
+          mapType: _mapType,
           markers: _markers,
           polylines: _polylines,
-          style: _safariMapStyle,
           myLocationEnabled: _liveLocationOn,
           myLocationButtonEnabled: false,
-          zoomControlsEnabled: false,
-          mapToolbarEnabled: false,
+          // Full default navigation gestures
+          scrollGesturesEnabled: true,
+          zoomGesturesEnabled: true,
+          tiltGesturesEnabled: true,
+          rotateGesturesEnabled: true,
+          zoomControlsEnabled: true,
+          mapToolbarEnabled: true,
+          compassEnabled: true,
           onMapCreated: (ctrl) {
             _mapController = ctrl;
             Future.delayed(const Duration(milliseconds: 500), _fitBounds);
-            if (_iconsReady) _buildMarkers();
           },
           onTap: (_) => _dismissCard(),
         ),
 
-        // ── Live location toggle FAB ──────────────
+        // ── Control buttons (top-right) ───────────────
         Positioned(
           top: 12,
           right: 12,
           child: Column(
             children: [
+              // Map type toggle
+              _MapFab(
+                icon: _mapTypeIcon,
+                label: _mapTypeLabel(ar),
+                tooltip: ar ? 'نوع الخريطة' : 'Map Type',
+                onTap: _cycleMapType,
+              ),
+              const SizedBox(height: 8),
+              // Live location
               _MapFab(
                 icon: _liveLocationOn
                     ? Icons.my_location_rounded
@@ -416,6 +354,7 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
                 onTap: _toggleLiveLocation,
               ),
               const SizedBox(height: 8),
+              // Fit all markers
               _MapFab(
                 icon: Icons.zoom_out_map_rounded,
                 tooltip: ar ? 'عرض الكل' : 'Fit All',
@@ -425,7 +364,7 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
           ),
         ),
 
-        // ── Location chips at bottom ──────────────
+        // ── Location chips at bottom ──────────────────
         Positioned(
           bottom: _selectedLocation != null ? 130 : 0,
           left: 0,
@@ -504,7 +443,7 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
           ),
         ),
 
-        // ── Selected location card ────────────────
+        // ── Selected location card ────────────────────
         if (_selectedLocation != null)
           Positioned(
             bottom: 0,
@@ -534,11 +473,13 @@ class _MapFab extends StatelessWidget {
     required this.tooltip,
     required this.onTap,
     this.isActive = false,
+    this.label,
   });
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
   final bool isActive;
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -551,12 +492,41 @@ class _MapFab extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: Tooltip(
           message: tooltip,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(icon,
-                size: 22,
-                color: isActive ? Colors.white : RihlaColors.jungleGreen),
+          child: Padding(
+            padding: label != null
+                ? const EdgeInsets.symmetric(horizontal: 10, vertical: 8)
+                : EdgeInsets.zero,
+            child: label != null
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon,
+                          size: 20,
+                          color: isActive
+                              ? Colors.white
+                              : RihlaColors.jungleGreen),
+                      const SizedBox(width: 6),
+                      Text(
+                        label!,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: isActive
+                              ? Colors.white
+                              : RihlaColors.jungleGreen,
+                        ),
+                      ),
+                    ],
+                  )
+                : SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(icon,
+                        size: 22,
+                        color: isActive
+                            ? Colors.white
+                            : RihlaColors.jungleGreen),
+                  ),
           ),
         ),
       ),

@@ -26,7 +26,8 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
   }
 
   void _refresh() {
-    setState(() => _tripsFuture = TripService.instance.myTrips());
+    final future = TripService.instance.myTrips();
+    setState(() => _tripsFuture = future);
   }
 
   @override

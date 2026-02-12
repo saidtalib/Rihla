@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Transport mode between stops.
 enum TransportType { drive, flight, train, ferry, unknown }
 
-TransportType _parseTransportType(String? raw) {
+TransportType parseTransportType(String? raw) {
   switch (raw?.toLowerCase()) {
     case 'drive':
       return TransportType.drive;
@@ -38,7 +38,7 @@ class TripLocation {
         name: m['name'] as String? ?? '',
         lat: (m['lat'] as num?)?.toDouble() ?? 0.0,
         lng: (m['lng'] as num?)?.toDouble() ?? 0.0,
-        transportType: _parseTransportType(m['transport_type'] as String?),
+        transportType: parseTransportType(m['transport_type'] as String?),
         isOvernight: m['is_overnight'] as bool? ?? false,
       );
 

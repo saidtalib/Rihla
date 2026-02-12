@@ -40,18 +40,34 @@ class AiLocation {
   final String name;
   final double lat;
   final double lng;
+  final String transportType; // drive, flight, train, ferry
+  final bool isOvernight;
 
-  const AiLocation({required this.name, required this.lat, required this.lng});
+  const AiLocation({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    this.transportType = 'drive',
+    this.isOvernight = false,
+  });
 
   factory AiLocation.fromJson(Map<String, dynamic> json) {
     return AiLocation(
       name: json['name'] as String? ?? '',
       lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
       lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+      transportType: json['transport_type'] as String? ?? 'drive',
+      isOvernight: json['is_overnight'] as bool? ?? false,
     );
   }
 
-  Map<String, dynamic> toJson() => {'name': name, 'lat': lat, 'lng': lng};
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'lat': lat,
+        'lng': lng,
+        'transport_type': transportType,
+        'is_overnight': isOvernight,
+      };
 }
 
 /// Gemini-powered AI service for trip planning.
@@ -88,7 +104,7 @@ Extract and generate a complete trip plan. Respond ONLY with valid JSON (no mark
 {
   "trip_title": "A catchy title for the trip in $lang",
   "locations": [
-    {"name": "Place name", "lat": 13.7563, "lng": 100.5018}
+    {"name": "Place name", "lat": 13.7563, "lng": 100.5018, "transport_type": "flight", "is_overnight": true}
   ],
   "transportation_suggestions": [
     "Flight from Muscat to Bangkok – Search & book here: https://www.google.com/travel/flights?q=flights+from+Muscat+to+Bangkok+on+July+10",
@@ -102,6 +118,8 @@ Extract and generate a complete trip plan. Respond ONLY with valid JSON (no mark
 
 Rules:
 - Include ALL locations mentioned or implied by the user, with real GPS coordinates.
+- For each location, set "transport_type" to how the traveler ARRIVES at that stop: "flight", "drive", "train", or "ferry". For the very first location use the most logical mode from the origin.
+- Set "is_overnight" to true if the traveler stays overnight at that location (hotel/camp), false if it's just a day visit or transit.
 - IMPORTANT for transportation_suggestions: Do NOT guess or approximate prices. Instead, for each flight or car rental, provide a direct Google Search/Travel link so the user can check real prices. Format: "Flight from [City A] to [City B] – Search & book: https://www.google.com/travel/flights?q=flights+from+[CityA]+to+[CityB]+on+[Date]" and for car rentals: "Rent a car in [City] – Search: https://www.google.com/search?q=car+rental+[City]+[Month]+[Year]". Replace spaces in URLs with +.
 - Generate a detailed daily itinerary covering the entire trip duration.
 - If the user is vague, infer reasonable defaults (3-5 days, popular activities).
