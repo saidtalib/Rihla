@@ -12,8 +12,9 @@ import '../tabs/map_tab.dart';
 import '../tabs/pack_tab.dart';
 import '../tabs/vault_tab.dart';
 import '../widgets/settings_toggles.dart';
+import 'kitty_screen.dart';
 
-/// Trip Dashboard with TabBar: Home · Map · The Pack · Vault
+/// Trip Dashboard with TabBar: Home · Map · The Pack · The Kitty · Vault
 class TripDetailsScreen extends StatefulWidget {
   const TripDetailsScreen({super.key, required this.trip});
   final Trip trip;
@@ -31,7 +32,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   void initState() {
     super.initState();
     _trip = widget.trip;
-    _tabCtrl = TabController(length: 4, vsync: this);
+    _tabCtrl = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -214,6 +215,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             fontFamily: fontFamily,
             fontSize: 12,
           ),
+          isScrollable: true,
+          tabAlignment: TabAlignment.center,
           tabs: [
             Tab(
               icon: const Icon(Icons.home_rounded, size: 20),
@@ -226,6 +229,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             Tab(
               icon: const Icon(Icons.groups_rounded, size: 20),
               text: ar ? 'العزوة' : 'The Pack',
+            ),
+            Tab(
+              icon: const Icon(Icons.monetization_on_rounded,
+                  size: 20, color: Color(0xFFFFD700)),
+              text: ar ? 'الجطية' : 'The Kitty',
             ),
             Tab(
               icon: const Icon(Icons.folder_rounded, size: 20),
@@ -241,6 +249,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
           MapTab(trip: _trip),
           PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
+          KittyScreen(trip: _trip),
           VaultTab(trip: _trip),
         ],
       ),
