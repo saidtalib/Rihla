@@ -33,6 +33,7 @@ dependencies:
 
   # Media
   image_picker: ^1.1.2
+  file_picker: ^8.1.7
 
   # Utilities
   uuid: ^4.5.1

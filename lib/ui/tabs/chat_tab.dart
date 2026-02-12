@@ -248,7 +248,7 @@ class _ChatBubble extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(
-                    message.imageUrl!,
+                    message.fileUrl!,
                     width: double.infinity,
                     height: 200,
                     fit: BoxFit.cover,
