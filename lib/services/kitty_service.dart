@@ -8,6 +8,9 @@ import 'package:http/http.dart' as http;
 
 import '../models/expense.dart';
 
+// Re-export currency data for backward compatibility
+export '../data/currencies.dart';
+
 /// Manages expenses, currency conversion, and settlement calculations.
 class KittyService {
   KittyService._();
@@ -146,6 +149,27 @@ class KittyService {
     await _expenses(tripId).add(expense.toFirestore());
   }
 
+  /// Update an existing expense (owner or admin).
+  Future<void> updateExpense({
+    required String tripId,
+    required String expenseId,
+    required String description,
+    required String category,
+    required double amount,
+    required String currency,
+    required double amountInBase,
+    required List<String> splitAmong,
+  }) async {
+    await _expenses(tripId).doc(expenseId).update({
+      'description': description,
+      'category': category,
+      'amount': amount,
+      'currency': currency,
+      'amount_in_base': amountInBase,
+      'split_among': splitAmong,
+    });
+  }
+
   /// Delete an expense (admin or the person who paid).
   Future<bool> deleteExpense(
     String tripId,
@@ -161,69 +185,89 @@ class KittyService {
   //  SETTLEMENT ENGINE (Greedy Algorithm)
   // ─────────────────────────────────────────────
 
-  /// Calculate optimised settlements from a list of expenses.
+  /// Calculates the minimum number of transfers needed to settle all debts.
   ///
-  /// Algorithm:
-  /// 1. Compute net balance for each member:
-  ///    balance = total_paid - (total_owed based on splits they're part of)
-  /// 2. Sort by balance: most positive (creditors) first,
-  ///    most negative (debtors) last.
-  /// 3. Greedy match: biggest creditor with biggest debtor,
-  ///    settle min of the two, repeat.
+  /// Uses **greedy largest-to-largest matching**: pairs the biggest creditor
+  /// with the biggest debtor, settles the smaller of the two amounts, then
+  /// advances whichever side is fully settled. This minimises the total
+  /// number of bank transfers required to bring every member to zero.
+  ///
+  /// Key design choices:
+  /// - Initialises balances for ALL trip members (even those with no expenses)
+  ///   so no one silently disappears from the settlement.
+  /// - Guards against empty `splitAmong` lists (avoids division by zero).
+  /// - Uses `update` with `ifAbsent` so payers/participants outside the
+  ///   `members` map are still handled safely.
+  /// - Rounds only the final settlement amount (not intermediate values)
+  ///   to avoid accumulated floating-point drift.
+  ///
+  /// [nameMap] should be uid → displayName (resolved from the users collection).
   List<Settlement> calculateSettlements(
     List<Expense> expenses,
-    Map<String, String> members, // uid -> display name or role
+    Map<String, String> members, // uid → role ('admin' | 'member')
+    {Map<String, String> nameMap = const {}}
   ) {
     if (expenses.isEmpty) return [];
 
-    // Build a name lookup from members map + expenses
+    // ── 1. Build name lookup ────────────────────
+    //    Priority: resolved nameMap > expense.paidByName > short UID
     final names = <String, String>{};
     for (final e in expenses) {
       names[e.paidByUid] = e.paidByName;
     }
     for (final uid in members.keys) {
-      names.putIfAbsent(uid, () => 'Member ${uid.substring(0, 6)}');
+      names.putIfAbsent(
+        uid,
+        () => uid.length >= 6 ? uid.substring(0, 6) : uid,
+      );
     }
+    names.addAll(nameMap); // resolved names win
 
-    // 1. Compute net balances (in base currency)
-    final balances = <String, double>{};
+    // ── 2. Initialise balances for EVERY member ──
+    final balances = <String, double>{
+      for (final uid in members.keys) uid: 0.0,
+    };
 
+    // ── 3. Compute net balances (in base currency) ──
     for (final e in expenses) {
-      // The payer gets credited
-      balances[e.paidByUid] =
-          (balances[e.paidByUid] ?? 0.0) + e.amountInBase;
+      if (e.splitAmong.isEmpty) continue; // safety: avoid /0
 
-      // Each person in the split owes their share
+      // Payer receives full credit
+      balances.update(
+        e.paidByUid,
+        (v) => v + e.amountInBase,
+        ifAbsent: () => e.amountInBase,
+      );
+
+      // Each participant owes an equal share
       final share = e.amountInBase / e.splitAmong.length;
       for (final uid in e.splitAmong) {
-        balances[uid] = (balances[uid] ?? 0.0) - share;
+        balances.update(uid, (v) => v - share, ifAbsent: () => -share);
       }
     }
 
-    // 2. Separate into creditors (+) and debtors (-)
-    final creditors = <MapEntry<String, double>>[];
-    final debtors = <MapEntry<String, double>>[];
+    // ── 4. Separate into creditors (+) and debtors (−) ──
+    final creditors = balances.entries
+        .where((e) => e.value > 0.01)
+        .map((e) => MapEntry(e.key, e.value))
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-    for (final entry in balances.entries) {
-      if (entry.value > 0.01) {
-        creditors.add(entry);
-      } else if (entry.value < -0.01) {
-        debtors.add(MapEntry(entry.key, -entry.value)); // make positive
-      }
-    }
+    final debtors = balances.entries
+        .where((e) => e.value < -0.01)
+        .map((e) => MapEntry(e.key, -e.value)) // flip to positive
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-    // Sort descending by amount
-    creditors.sort((a, b) => b.value.compareTo(a.value));
-    debtors.sort((a, b) => b.value.compareTo(a.value));
-
-    // 3. Greedy settlement
+    // ── 5. Greedy matching ──────────────────────
     final settlements = <Settlement>[];
     int ci = 0, di = 0;
-    final cAmounts = creditors.map((e) => e.value).toList();
-    final dAmounts = debtors.map((e) => e.value).toList();
 
     while (ci < creditors.length && di < debtors.length) {
-      final settle = cAmounts[ci] < dAmounts[di] ? cAmounts[ci] : dAmounts[di];
+      final cRemain = creditors[ci].value;
+      final dRemain = debtors[di].value;
+      final settle = cRemain < dRemain ? cRemain : dRemain;
+
       if (settle > 0.01) {
         settlements.add(Settlement(
           fromUid: debtors[di].key,
@@ -233,20 +277,20 @@ class KittyService {
           amount: double.parse(settle.toStringAsFixed(2)),
         ));
       }
-      cAmounts[ci] -= settle;
-      dAmounts[di] -= settle;
-      if (cAmounts[ci] < 0.01) ci++;
-      if (dAmounts[di] < 0.01) di++;
+
+      // Reduce remaining amounts (mutate list entries)
+      creditors[ci] = MapEntry(creditors[ci].key, cRemain - settle);
+      debtors[di] = MapEntry(debtors[di].key, dRemain - settle);
+
+      // Advance index once a side is fully settled
+      if (creditors[ci].value < 0.01) ci++;
+      if (di < debtors.length && debtors[di].value < 0.01) di++;
     }
+
+    // Optional polish: sort settlements alphabetically by debtor name
+    settlements.sort((a, b) => a.fromName.compareTo(b.fromName));
 
     return settlements;
   }
 }
 
-/// Common world currencies for the picker.
-const List<String> kCommonCurrencies = [
-  'OMR', 'AED', 'SAR', 'USD', 'EUR', 'GBP', 'JPY', 'INR',
-  'TRY', 'EGP', 'KWD', 'BHD', 'QAR', 'MAD', 'THB', 'MYR',
-  'IDR', 'PHP', 'BRL', 'AUD', 'CAD', 'CHF', 'CNY', 'SGD',
-  'ZAR', 'KES', 'NGN', 'GEL', 'AZN',
-];

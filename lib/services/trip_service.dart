@@ -19,6 +19,64 @@ class TripService {
 
   String get _uid => FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
 
+  // ── Name resolution cache ─────────────────────
+  final Map<String, String> _nameCache = {};
+
+  /// Resolve a list of UIDs to their display names from the `users` collection.
+  /// Results are cached in memory to avoid repeated Firestore reads.
+  Future<Map<String, String>> resolveNames(List<String> uids) async {
+    final result = <String, String>{};
+    final toFetch = <String>[];
+
+    for (final uid in uids) {
+      if (_nameCache.containsKey(uid)) {
+        result[uid] = _nameCache[uid]!;
+      } else {
+        toFetch.add(uid);
+      }
+    }
+
+    for (final uid in toFetch) {
+      try {
+        final doc = await _db.collection('users').doc(uid).get();
+        final data = doc.data();
+        // Check both snake_case (used by auth_service) and camelCase (legacy)
+        final name =
+            (data?['display_name'] as String?)?.isNotEmpty == true
+                ? data!['display_name'] as String
+                : (data?['displayName'] as String?)?.isNotEmpty == true
+                    ? data!['displayName'] as String
+                    : 'Member ${uid.length >= 6 ? uid.substring(0, 6) : uid}';
+        _nameCache[uid] = name;
+        result[uid] = name;
+      } catch (_) {
+        final fallback =
+            'Member ${uid.length >= 6 ? uid.substring(0, 6) : uid}';
+        _nameCache[uid] = fallback;
+        result[uid] = fallback;
+      }
+    }
+
+    return result;
+  }
+
+  /// Get a cached name for a UID (returns short UID if not cached).
+  String getCachedName(String uid) {
+    return _nameCache[uid] ??
+        (uid.length >= 6 ? uid.substring(0, 6) : uid);
+  }
+
+  /// Force re-fetch names on next call (clears stale cache).
+  void clearNameCache() => _nameCache.clear();
+
+  // ── Real-time trip stream ─────────────────────
+  Stream<Trip?> tripStream(String tripId) {
+    return _trips.doc(tripId).snapshots().map((snap) {
+      if (!snap.exists) return null;
+      return Trip.fromFirestore(snap);
+    });
+  }
+
   String _generateJoinCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rng = Random.secure();
@@ -179,6 +237,21 @@ class TripService {
   Future<void> removeLocation(String tripId, List<TripLocation> updatedLocations) async {
     await _trips.doc(tripId).update({
       'locations': updatedLocations.map((l) => l.toMap()).toList(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Settle / Unsettle trip kitty ────────────
+  Future<void> settleTrip(String tripId) async {
+    await _trips.doc(tripId).update({
+      'is_settled': true,
+      'settled_at': FieldValue.serverTimestamp(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  Future<void> unsettleTrip(String tripId) async {
+    await _trips.doc(tripId).update({
+      'is_settled': false,
+      'settled_at': FieldValue.delete(),
     }).timeout(const Duration(seconds: 10));
   }
 

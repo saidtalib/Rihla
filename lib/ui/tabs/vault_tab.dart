@@ -22,8 +22,17 @@ class _VaultTabState extends State<VaultTab>
   @override
   bool get wantKeepAlive => true;
 
+  // Cache stream so StreamBuilder doesn't re-subscribe on every build
+  late final Stream<List<Map<String, dynamic>>> _vaultStream;
+
   Trip get _trip => widget.trip;
   String get _myUid => TripService.instance.currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    _vaultStream = ChatService.instance.vaultStream(_trip.id);
+  }
   bool get _isAdmin => _trip.isAdmin(_myUid);
 
   /// Whether the current user can delete this vault item.
@@ -107,7 +116,7 @@ class _VaultTabState extends State<VaultTab>
     final tt = Theme.of(context).textTheme;
 
     return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: ChatService.instance.vaultStream(_trip.id),
+      stream: _vaultStream,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return Center(

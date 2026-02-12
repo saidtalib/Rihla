@@ -67,6 +67,7 @@ class Trip {
     this.transportSuggestions = const [],
     this.members = const {},
     this.isPublic = false,
+    this.isSettled = false,
     this.paidMembers = const [],
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -85,6 +86,9 @@ class Trip {
   /// uid -> 'admin' | 'member'
   final Map<String, String> members;
   final bool isPublic;
+
+  /// Whether the kitty has been settled (frozen — no more edits).
+  final bool isSettled;
   final List<String> paidMembers;
   final DateTime createdAt;
 
@@ -107,6 +111,7 @@ class Trip {
           List<String>.from(d['transport_suggestions'] ?? []),
       members: Map<String, String>.from(d['members'] ?? {}),
       isPublic: d['is_public'] ?? false,
+      isSettled: d['is_settled'] as bool? ?? false,
       paidMembers: List<String>.from(d['paid_members'] ?? []),
       createdAt:
           (d['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -123,6 +128,7 @@ class Trip {
         'transport_suggestions': transportSuggestions,
         'members': members,
         'is_public': isPublic,
+        'is_settled': isSettled,
         'paid_members': paidMembers,
         'created_at': Timestamp.fromDate(createdAt),
       };
@@ -194,6 +200,7 @@ class Trip {
     List<String>? transportSuggestions,
     Map<String, String>? members,
     bool? isPublic,
+    bool? isSettled,
     List<String>? paidMembers,
   }) =>
       Trip(
@@ -208,6 +215,7 @@ class Trip {
             transportSuggestions ?? this.transportSuggestions,
         members: members ?? this.members,
         isPublic: isPublic ?? this.isPublic,
+        isSettled: isSettled ?? this.isSettled,
         paidMembers: paidMembers ?? this.paidMembers,
         createdAt: createdAt,
       );

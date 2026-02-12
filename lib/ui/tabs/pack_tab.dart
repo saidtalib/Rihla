@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_settings.dart';
@@ -7,6 +8,7 @@ import '../../ui/theme/app_theme.dart';
 import '../screens/social_chat_screen.dart';
 
 /// "The Pack" tab: Combined Chat + Member management.
+/// Uses a StreamBuilder on the trip document for real-time member sync.
 class PackTab extends StatefulWidget {
   const PackTab(
       {super.key, required this.trip, required this.onTripUpdated});
@@ -20,69 +22,84 @@ class PackTab extends StatefulWidget {
 class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
   bool _showMembers = false;
 
+  /// Resolved uid → displayName from Firestore `users` collection.
+  Map<String, String> _names = {};
+  bool _namesLoaded = false;
+
+  // Cache stream so StreamBuilder doesn't re-subscribe on every build
+  late final Stream<Trip?> _tripStream;
+
   @override
   bool get wantKeepAlive => true;
 
   String get _myUid => TripService.instance.currentUserId;
-  Trip get _trip => widget.trip;
+
+  @override
+  void initState() {
+    super.initState();
+    _tripStream = TripService.instance.tripStream(widget.trip.id);
+    _loadNames(widget.trip.members.keys.toList());
+  }
+
+  Future<void> _loadNames(List<String> uids) async {
+    TripService.instance.clearNameCache();
+    final names = await TripService.instance.resolveNames(uids);
+    if (mounted) setState(() { _names = names; _namesLoaded = true; });
+  }
+
+  String _displayName(String uid) {
+    if (uid == _myUid) {
+      return AppSettings.of(context).isArabic ? 'أنت' : 'You';
+    }
+    return _names[uid] ?? TripService.instance.getCachedName(uid);
+  }
 
   // ── Promote member to admin ─────────────────
-  Future<void> _promoteToAdmin(String memberId) async {
+  Future<void> _promoteToAdmin(String memberId, Trip trip) async {
     final ar = AppSettings.of(context).isArabic;
+    final name = _displayName(memberId);
     final confirmed = await _confirmDialog(
       title: ar ? 'ترقية لمشرف؟' : 'Promote to Admin?',
       content: ar
-          ? 'سيتمكن هذا العضو من إدارة الرحلة'
-          : 'This member will be able to manage the trip',
+          ? 'هل أنت متأكد من ترقية $name لمشرف؟'
+          : 'Are you sure you want to promote $name to Admin?',
       confirmLabel: ar ? 'ترقية' : 'Promote',
       isDestructive: false,
     );
     if (!confirmed) return;
-    await TripService.instance.promoteToAdmin(_trip.id, memberId);
-    final m = Map<String, String>.from(_trip.members);
-    m[memberId] = 'admin';
-    widget.onTripUpdated(_trip.copyWith(members: m));
+    await TripService.instance.promoteToAdmin(trip.id, memberId);
   }
 
   // ── Demote admin to member (creator only) ───
-  Future<void> _demoteToMember(String memberId) async {
+  Future<void> _demoteToMember(String memberId, Trip trip) async {
     final ar = AppSettings.of(context).isArabic;
+    final name = _displayName(memberId);
     final confirmed = await _confirmDialog(
       title: ar ? 'تخفيض من مشرف؟' : 'Demote Admin?',
       content: ar
-          ? 'سيصبح هذا المشرف عضوًا عاديًا'
-          : 'This admin will become a regular member',
+          ? 'هل أنت متأكد من تخفيض $name لعضو عادي؟'
+          : 'Are you sure you want to demote $name to Member?',
       confirmLabel: ar ? 'تخفيض' : 'Demote',
       isDestructive: true,
     );
     if (!confirmed) return;
-    await TripService.instance.demoteToMember(_trip.id, memberId);
-    final m = Map<String, String>.from(_trip.members);
-    m[memberId] = 'member';
-    widget.onTripUpdated(_trip.copyWith(members: m));
+    await TripService.instance.demoteToMember(trip.id, memberId);
   }
 
   // ── Remove member ───────────────────────────
-  Future<void> _removeMember(String memberId) async {
+  Future<void> _removeMember(String memberId, Trip trip) async {
     final ar = AppSettings.of(context).isArabic;
-    final role = _trip.isAdmin(memberId)
-        ? (ar ? 'المشرف' : 'Admin')
-        : (ar ? 'العضو' : 'Member');
-    final name = memberId.length >= 6 ? memberId.substring(0, 6) : memberId;
-
+    final name = _displayName(memberId);
     final confirmed = await _confirmDialog(
-      title: ar ? 'إزالة $role؟' : 'Remove $role?',
+      title: ar ? 'إزالة العضو؟' : 'Remove Member?',
       content: ar
-          ? 'هل أنت متأكد من إزالة $role $name من الرحلة؟'
-          : 'Are you sure you want to remove $role $name from the trip?',
+          ? 'هل أنت متأكد من إزالة $name من الرحلة؟'
+          : 'Are you sure you want to remove $name from the trip?',
       confirmLabel: ar ? 'إزالة' : 'Remove',
       isDestructive: true,
     );
     if (!confirmed) return;
-    await TripService.instance.removeMember(_trip.id, memberId);
-    final m = Map<String, String>.from(_trip.members)..remove(memberId);
-    final p = List<String>.from(_trip.paidMembers)..remove(memberId);
-    widget.onTripUpdated(_trip.copyWith(members: m, paidMembers: p));
+    await TripService.instance.removeMember(trip.id, memberId);
   }
 
   Future<bool> _confirmDialog({
@@ -138,11 +155,23 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
             children: [
               Icon(Icons.groups_rounded, color: cs.primary, size: 20),
               const SizedBox(width: 8),
-              Text(
-                ar
-                    ? 'العزوة (${_trip.paidMembers.length})'
-                    : 'The Pack (${_trip.paidMembers.length})',
-                style: tt.titleSmall,
+              // Use streamed count
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('trips')
+                    .doc(widget.trip.id)
+                    .snapshots(),
+                builder: (ctx, snap) {
+                  final count = snap.hasData
+                      ? (((snap.data!.data() as Map<String, dynamic>?)?['paid_members']
+                              as List?) ??
+                          []).length
+                      : widget.trip.paidMembers.length;
+                  return Text(
+                    ar ? 'العزوة ($count)' : 'The Pack ($count)',
+                    style: tt.titleSmall,
+                  );
+                },
               ),
               const Spacer(),
               TextButton.icon(
@@ -169,10 +198,10 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
             child: _showMembers
-                ? _buildMemberList(ar, cs, tt)
+                ? _buildMemberListStream(ar, cs, tt)
                 : SocialChatScreen(
                     key: const ValueKey('social_chat'),
-                    trip: _trip,
+                    trip: widget.trip,
                     onTripUpdated: widget.onTripUpdated,
                   ),
           ),
@@ -182,11 +211,40 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
   }
 
   // ═════════════════════════════════════════════
-  //  Member List with Role-Based Actions
+  //  Real-time Member List via StreamBuilder
   // ═════════════════════════════════════════════
-  Widget _buildMemberList(bool ar, ColorScheme cs, TextTheme tt) {
-    final memberIds = _trip.members.keys.toList();
-    final canManage = _trip.canManageMembers(_myUid);
+  Widget _buildMemberListStream(bool ar, ColorScheme cs, TextTheme tt) {
+    return StreamBuilder<Trip?>(
+      stream: _tripStream,
+      builder: (context, snap) {
+        final trip = snap.data ?? widget.trip;
+
+        // Sync to parent so other tabs pick up changes
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && snap.hasData && snap.data != null) {
+            widget.onTripUpdated(trip);
+          }
+        });
+
+        // Resolve names for any new members
+        final memberUids = trip.members.keys.toList();
+        final hasNewMembers = memberUids.any((uid) => !_names.containsKey(uid));
+        if (hasNewMembers) {
+          _loadNames(memberUids);
+        }
+
+        return _buildMemberList(trip, ar, cs, tt);
+      },
+    );
+  }
+
+  Widget _buildMemberList(Trip trip, bool ar, ColorScheme cs, TextTheme tt) {
+    final memberIds = trip.members.keys.toList();
+    final canManage = trip.canManageMembers(_myUid);
+
+    if (!_namesLoaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     return ListView.builder(
       key: const ValueKey('members'),
@@ -194,15 +252,16 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
       itemCount: memberIds.length,
       itemBuilder: (context, i) {
         final uid = memberIds[i];
-        final isCreator = _trip.isCreator(uid);
-        final isThisAdmin = _trip.isAdmin(uid);
+        final isCreator = trip.isCreator(uid);
+        final isThisAdmin = trip.isAdmin(uid);
         final isMe = uid == _myUid;
 
-        // Determine which actions the current user can perform on this member
-        final showRemove = canManage && _trip.canRemove(_myUid, uid);
-        final showPromote = canManage && _trip.canPromote(_myUid, uid);
-        final showDemote = canManage && _trip.canDemote(_myUid, uid);
+        final showRemove = canManage && trip.canRemove(_myUid, uid);
+        final showPromote = canManage && trip.canPromote(_myUid, uid);
+        final showDemote = canManage && trip.canDemote(_myUid, uid);
         final hasAnyAction = showRemove || showPromote || showDemote;
+
+        final name = _displayName(uid);
 
         return Card(
           child: ListTile(
@@ -227,7 +286,7 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
               ),
             ),
             title: Text(
-              isMe ? (ar ? 'أنت' : 'You') : uid.substring(0, 6),
+              isMe ? '$name (${ar ? 'أنت' : 'You'})' : name,
               style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
@@ -243,9 +302,9 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
             trailing: hasAnyAction
                 ? PopupMenuButton<String>(
                     onSelected: (action) {
-                      if (action == 'promote') _promoteToAdmin(uid);
-                      if (action == 'demote') _demoteToMember(uid);
-                      if (action == 'remove') _removeMember(uid);
+                      if (action == 'promote') _promoteToAdmin(uid, trip);
+                      if (action == 'demote') _demoteToMember(uid, trip);
+                      if (action == 'remove') _removeMember(uid, trip);
                     },
                     itemBuilder: (_) => [
                       if (showPromote)

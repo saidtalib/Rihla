@@ -237,7 +237,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
           MapTab(trip: _trip),
           PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
-          KittyScreen(trip: _trip),
+          KittyScreen(trip: _trip, onTripUpdated: _onTripUpdated),
           VaultTab(trip: _trip),
         ],
       ),
