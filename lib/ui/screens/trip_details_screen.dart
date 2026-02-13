@@ -11,8 +11,8 @@ import '../tabs/home_tab.dart';
 import '../tabs/map_tab.dart';
 import '../tabs/pack_tab.dart';
 import '../tabs/vault_tab.dart';
-import '../widgets/settings_toggles.dart';
 import 'kitty_screen.dart';
+import 'settings_screen.dart';
 
 /// Trip Dashboard with TabBar: Home · Map · The Pack · The Kitty · Vault
 class TripDetailsScreen extends StatefulWidget {
@@ -27,12 +27,15 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
     with SingleTickerProviderStateMixin {
   late Trip _trip;
   late TabController _tabCtrl;
+  late final Stream<Trip?> _tripStream;
 
   @override
   void initState() {
     super.initState();
     _trip = widget.trip;
     _tabCtrl = TabController(length: 5, vsync: this);
+    // Cache the stream so it doesn't re-subscribe on every rebuild
+    _tripStream = TripService.instance.tripStream(_trip.id);
   }
 
   @override
@@ -182,65 +185,92 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   Widget build(BuildContext context) {
     final ar = AppSettings.of(context).isArabic;
 
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          _trip.title,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          // Share icon — ONLY visible to admin
-          if (_isAdmin)
-            IconButton(
-              icon: const Icon(Icons.share_rounded),
-              tooltip: ar ? 'مشاركة' : 'Share',
-              onPressed: _onShare,
+    return StreamBuilder<Trip?>(
+      stream: _tripStream,
+      initialData: _trip,
+      builder: (context, snap) {
+        // Update the local trip whenever Firestore sends new data
+        if (snap.hasData && snap.data != null) {
+          // Only call setState via _onTripUpdated if the title actually changed
+          final incoming = snap.data!;
+          if (incoming.title != _trip.title ||
+              incoming.locations.length != _trip.locations.length) {
+            // Schedule a microtask to avoid setState during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _onTripUpdated(incoming);
+            });
+          }
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => Navigator.of(context).pop(),
             ),
-          const SettingsToggles(),
-        ],
-        bottom: TabBar(
-          controller: _tabCtrl,
-          isScrollable: true,
-          tabAlignment: TabAlignment.center,
-          tabs: [
-            Tab(
-              icon: const Icon(Icons.home_rounded, size: 20),
-              text: ar ? 'الرئيسية' : 'Home',
+            title: Text(
+              _trip.title,
+              overflow: TextOverflow.ellipsis,
             ),
-            Tab(
-              icon: const Icon(Icons.map_rounded, size: 20),
-              text: ar ? 'الخريطة' : 'Map',
+            actions: [
+              // Share icon — ONLY visible to admin
+              if (_isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.share_rounded),
+                  tooltip: ar ? 'مشاركة' : 'Share',
+                  onPressed: _onShare,
+                ),
+              // Settings icon
+              IconButton(
+                icon: const Icon(Icons.settings_rounded, size: 20),
+                tooltip: ar ? 'الإعدادات' : 'Settings',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ),
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabCtrl,
+              isScrollable: true,
+              tabAlignment: TabAlignment.center,
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.home_rounded, size: 20),
+                  text: ar ? 'الرئيسية' : 'Home',
+                ),
+                Tab(
+                  icon: const Icon(Icons.map_rounded, size: 20),
+                  text: ar ? 'الخريطة' : 'Map',
+                ),
+                Tab(
+                  icon: const Icon(Icons.groups_rounded, size: 20),
+                  text: ar ? 'العزوة' : 'The Pack',
+                ),
+                Tab(
+                  icon: const Icon(Icons.monetization_on_rounded,
+                      size: 20, color: Color(0xFFFFD700)),
+                  text: ar ? 'الجطية' : 'The Kitty',
+                ),
+                Tab(
+                  icon: const Icon(Icons.folder_rounded, size: 20),
+                  text: ar ? 'الخزنة' : 'Vault',
+                ),
+              ],
             ),
-            Tab(
-              icon: const Icon(Icons.groups_rounded, size: 20),
-              text: ar ? 'العزوة' : 'The Pack',
-            ),
-            Tab(
-              icon: const Icon(Icons.monetization_on_rounded,
-                  size: 20, color: Color(0xFFFFD700)),
-              text: ar ? 'الجطية' : 'The Kitty',
-            ),
-            Tab(
-              icon: const Icon(Icons.folder_rounded, size: 20),
-              text: ar ? 'الخزنة' : 'Vault',
-            ),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabCtrl,
-        children: [
-          HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
-          MapTab(trip: _trip),
-          PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
-          KittyScreen(trip: _trip, onTripUpdated: _onTripUpdated),
-          VaultTab(trip: _trip),
-        ],
-      ),
+          ),
+          body: TabBarView(
+            controller: _tabCtrl,
+            children: [
+              HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
+              MapTab(trip: _trip),
+              PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
+              KittyScreen(trip: _trip, onTripUpdated: _onTripUpdated),
+              VaultTab(trip: _trip),
+            ],
+          ),
+        );
+      },
     );
   }
 }

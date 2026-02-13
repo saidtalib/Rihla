@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/app_settings.dart';
 import '../../core/theme.dart';
 import '../../models/trip.dart';
+import '../../services/live_location_service.dart';
 
 /// Interactive Google Map with default layers, route polyline & live location.
 class MapTab extends StatefulWidget {
@@ -25,9 +28,19 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
   // Map type (Default / Satellite / Terrain)
   MapType _mapType = MapType.normal;
 
-  // Live location state
+  // Share with Pack: when true, we write our position to Firestore (throttled)
+  bool _sharingWithPack = false;
   bool _liveLocationOn = false;
   StreamSubscription<Position>? _positionStream;
+  StreamSubscription<List<LiveLocationEntry>>? _liveLocationsSub;
+  List<LiveLocationEntry> _liveEntries = [];
+
+  // Throttle writes: min 15s or ~50m movement
+  static const _throttleDuration = Duration(seconds: 15);
+  static const _throttleDistanceMeters = 50.0;
+  DateTime? _lastLiveWriteAt;
+  double? _lastLiveLat;
+  double? _lastLiveLng;
 
   // Selected marker card
   TripLocation? _selectedLocation;
@@ -37,12 +50,26 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    _liveLocationsSub = LiveLocationService.instance
+        .streamLiveLocations(widget.trip.id)
+        .listen((list) {
+      if (mounted) setState(() => _liveEntries = list);
+    });
+  }
+
+  @override
   void dispose() {
     _positionStream?.cancel();
+    _liveLocationsSub?.cancel();
+    if (_sharingWithPack) {
+      LiveLocationService.instance.clearMyLiveLocation(widget.trip.id);
+    }
     super.dispose();
   }
 
-  // ── Markers (default colored pins) ──────────────
+  // ── Markers (trip locations) ────────────────────
   Set<Marker> get _markers {
     final locs = widget.trip.locations;
     final markers = <Marker>{};
@@ -69,6 +96,39 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
 
     return markers;
   }
+
+  /// Hue from uid hash so each Pack member has a distinct marker color.
+  static double _hueFromUid(String uid) {
+    int h = uid.hashCode.abs();
+    const hues = [
+      BitmapDescriptor.hueViolet,
+      BitmapDescriptor.hueBlue,
+      BitmapDescriptor.hueCyan,
+      BitmapDescriptor.hueAzure,
+      BitmapDescriptor.hueRose,
+      BitmapDescriptor.hueMagenta,
+    ];
+    return hues[h % hues.length].toDouble();
+  }
+
+  // ── Live Pack member markers (avatars: colored pin + name) ──
+  Set<Marker> get _liveMemberMarkers {
+    final set = <Marker>{};
+    for (final entry in _liveEntries) {
+      set.add(Marker(
+        markerId: MarkerId('live_${entry.uid}'),
+        position: LatLng(entry.lat, entry.lng),
+        icon: BitmapDescriptor.defaultMarkerWithHue(_hueFromUid(entry.uid)),
+        infoWindow: InfoWindow(
+          title: entry.displayName.isNotEmpty ? entry.displayName : 'Pack',
+          snippet: 'Live',
+        ),
+      ));
+    }
+    return set;
+  }
+
+  Set<Marker> get _allMarkers => {..._markers, ..._liveMemberMarkers};
 
   String _stopLabel(TripLocation loc) {
     if (loc.isOvernight) return 'Overnight';
@@ -153,20 +213,72 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
     }
   }
 
-  // ── Live location toggle ────────────────────────
-  Future<void> _toggleLiveLocation() async {
-    if (_liveLocationOn) {
+  // ── Share with Pack (crosshair): confirm dialog, toggle on/off ──
+  Future<void> _toggleShareWithPack() async {
+    final ar = AppSettings.of(context).isArabic;
+
+    if (_sharingWithPack) {
+      final stop = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(ar ? 'إيقاف المشاركة' : 'Stop sharing?'),
+          content: Text(
+            ar
+                ? 'لن يتمكن العزوة من رؤية موقعك على الخريطة.'
+                : 'The Pack will no longer see your location on the map.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ar ? 'إلغاء' : 'Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ar ? 'إيقاف' : 'Stop'),
+            ),
+          ],
+        ),
+      );
+      if (stop != true || !mounted) return;
       await _positionStream?.cancel();
       _positionStream = null;
-      setState(() => _liveLocationOn = false);
+      await LiveLocationService.instance.clearMyLiveLocation(widget.trip.id);
+      setState(() {
+        _sharingWithPack = false;
+        _liveLocationOn = false;
+      });
       return;
     }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.location_on_rounded, color: RihlaColors.jungleGreen, size: 40),
+        title: Text(ar ? 'مشاركة موقعك' : 'Share your location?'),
+        content: Text(
+          ar
+              ? 'سيتمكن العزوة من رؤية موقعك على الخريطة. يمكنك إيقاف المشاركة في أي وقت.'
+              : 'The Pack will see your location on the map. You can stop sharing anytime.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ar ? 'لاحقاً' : 'Not now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(ar ? 'مشاركة' : 'Share'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
 
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Please enable location services'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ar ? 'تفعيل خدمة الموقع' : 'Please enable location services'),
         backgroundColor: Colors.red,
       ));
       return;
@@ -177,29 +289,57 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Location permission denied'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ar ? 'تم رفض إذن الموقع' : 'Location permission denied'),
           backgroundColor: Colors.red,
         ));
         return;
       }
     }
-
     if (permission == LocationPermission.deniedForever) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Location permission permanently denied'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ar ? 'تم رفض إذن الموقع نهائياً' : 'Location permission permanently denied'),
         backgroundColor: Colors.red,
       ));
       return;
     }
 
-    setState(() => _liveLocationOn = true);
+    setState(() {
+      _sharingWithPack = true;
+      _liveLocationOn = true;
+    });
 
-    // The map's myLocationEnabled handles the blue dot automatically.
-    // We keep the stream alive so the dot updates in real-time.
+    final user = FirebaseAuth.instance.currentUser;
+    final displayName = user?.displayName ?? user?.email ?? 'Pack';
+    final photoUrl = user?.photoURL;
+
+    void writeIfThrottleOk(double lat, double lng) {
+      final now = DateTime.now();
+      final okTime = _lastLiveWriteAt == null ||
+          now.difference(_lastLiveWriteAt!).inSeconds >= _throttleDuration.inSeconds;
+      final okDist = _lastLiveLat == null ||
+          Geolocator.distanceBetween(_lastLiveLat!, _lastLiveLng!, lat, lng) >= _throttleDistanceMeters;
+      if (okTime || okDist) {
+        _lastLiveWriteAt = now;
+        _lastLiveLat = lat;
+        _lastLiveLng = lng;
+        LiveLocationService.instance.setMyLiveLocation(
+          widget.trip.id,
+          lat: lat,
+          lng: lng,
+          displayName: displayName,
+          photoUrl: photoUrl,
+        );
+      }
+    }
+
     try {
-      await Geolocator.getCurrentPosition();
+      final pos = await Geolocator.getCurrentPosition();
+      writeIfThrottleOk(pos.latitude, pos.longitude);
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(pos.latitude, pos.longitude), 15),
+      );
     } catch (e) {
       debugPrint('[MapTab] Error getting position: $e');
     }
@@ -209,7 +349,15 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
       ),
-    ).listen((_) {});
+    ).listen((pos) {
+      if (!_sharingWithPack) return;
+      writeIfThrottleOk(pos.latitude, pos.longitude);
+      if (_liveLocationOn && _mapController != null) {
+        _mapController!.animateCamera(
+          CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)),
+        );
+      }
+    });
   }
 
   // ── Map type toggle ─────────────────────────────
@@ -311,9 +459,9 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
           initialCameraPosition:
               CameraPosition(target: _initialCenter, zoom: 5),
           mapType: _mapType,
-          markers: _markers,
+          markers: _allMarkers,
           polylines: _polylines,
-          myLocationEnabled: _liveLocationOn,
+          myLocationEnabled: true,
           myLocationButtonEnabled: false,
           // Full default navigation gestures
           scrollGesturesEnabled: true,
@@ -344,16 +492,19 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
                 onTap: _cycleMapType,
               ),
               const SizedBox(height: 8),
-              // Live location
-              _MapFab(
-                icon: _liveLocationOn
-                    ? Icons.my_location_rounded
-                    : Icons.location_searching_rounded,
-                tooltip: ar ? 'موقعي' : 'My Location',
-                isActive: _liveLocationOn,
-                onTap: _toggleLiveLocation,
-              ),
-              const SizedBox(height: 8),
+              // Live location (hidden on web — browser handles geolocation)
+              if (!kIsWeb)
+                _MapFab(
+                  icon: _sharingWithPack
+                      ? Icons.my_location_rounded
+                      : Icons.location_searching_rounded,
+                  tooltip: _sharingWithPack
+                      ? (ar ? 'إيقاف المشاركة' : 'Stop sharing')
+                      : (ar ? 'مشاركة موقعي مع العزوة' : 'Share with Pack'),
+                  isActive: _sharingWithPack,
+                  onTap: _toggleShareWithPack,
+                ),
+              if (!kIsWeb) const SizedBox(height: 8),
               // Fit all markers
               _MapFab(
                 icon: Icons.zoom_out_map_rounded,

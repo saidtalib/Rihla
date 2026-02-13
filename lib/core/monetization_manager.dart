@@ -51,6 +51,11 @@ class AdIds {
 
 // ──────────────────────────────────────────────
 //  Monetization Manager  (singleton)
+//
+//  Handles AdMob SDK initialisation, interstitial
+//  pre-loading, and showing.  Guarded against
+//  double-init and provides a dispose() for
+//  graceful shutdown.
 // ──────────────────────────────────────────────
 class MonetizationManager {
   MonetizationManager._();
@@ -59,15 +64,30 @@ class MonetizationManager {
   InterstitialAd? _interstitialAd;
   bool _interstitialReady = false;
 
+  /// Whether the SDK has been initialised.
+  bool _isInitialized = false;
+
+  /// True once [init] has completed successfully.
+  bool get isInitialized => _isInitialized;
+
   /// Initialise the Mobile Ads SDK.  Call once from main().
+  /// Safe to call multiple times — subsequent calls are no-ops.
   Future<void> init() async {
+    if (_isInitialized) return;
     await MobileAds.instance.initialize();
+    _isInitialized = true;
+    debugPrint('[MonetizationManager] SDK initialised ✓');
   }
 
   // ── Interstitial ──────────────────────────
 
   /// Pre-load an interstitial so it's ready to show instantly.
   void loadInterstitial() {
+    if (!_isInitialized) {
+      debugPrint('[MonetizationManager] Cannot load ad — SDK not initialised.');
+      return;
+    }
+
     InterstitialAd.load(
       adUnitId: AdIds.interstitial,
       request: const AdRequest(),
@@ -104,5 +124,14 @@ class MonetizationManager {
       return true;
     }
     return false;
+  }
+
+  /// Dispose of loaded ads and reset state.  Call on app shutdown or when
+  /// the ad surface is no longer needed.
+  void dispose() {
+    _interstitialAd?.dispose();
+    _interstitialAd = null;
+    _interstitialReady = false;
+    debugPrint('[MonetizationManager] disposed');
   }
 }

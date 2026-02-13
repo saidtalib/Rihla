@@ -128,11 +128,32 @@ class AuthService {
   }
 
   // ─────────────────────────────────────────────
+  //  Delete Account
+  // ─────────────────────────────────────────────
+  /// Permanently deletes the user's account from Firebase Auth
+  /// and removes their document from the `users` collection.
+  Future<void> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // Remove Firestore user document
+    try {
+      await _db.collection('users').doc(user.uid).delete();
+    } catch (e) {
+      debugPrint('[AuthService] Failed to delete user doc: $e');
+    }
+
+    // Delete the Firebase Auth account
+    await user.delete();
+  }
+
+  // ─────────────────────────────────────────────
   //  Profile Sync to Firestore
   // ─────────────────────────────────────────────
   Future<void> syncUserToFirestore({
     String? displayName,
     String? photoUrl,
+    String? username,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return;
@@ -145,10 +166,23 @@ class AuthService {
       'updated_at': FieldValue.serverTimestamp(),
     };
 
+    if (username != null) {
+      data['username'] = username;
+    }
+
     await _db.collection('users').doc(user.uid).set(
       data,
       SetOptions(merge: true),
     );
+  }
+
+  /// Fetch the current user's username from Firestore.
+  Future<String?> getUsername() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    final doc = await _db.collection('users').doc(user.uid).get();
+    if (!doc.exists) return null;
+    return doc.data()?['username'] as String?;
   }
 
   /// Update the Firebase Auth profile + Firestore user doc.

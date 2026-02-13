@@ -6,7 +6,6 @@ import '../../models/trip.dart';
 import '../../services/trip_service.dart';
 import '../../ui/theme/app_theme.dart';
 import '../widgets/ad_banner.dart';
-import '../widgets/settings_toggles.dart';
 import 'trip_details_screen.dart';
 
 /// Screen where members enter a join code to access a trip.
@@ -105,7 +104,7 @@ class _JoinTripScreenState extends State<JoinTripScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(ar ? 'الانضمام لرحلة' : 'Join a Trip'),
-        actions: const [SettingsToggles()],
+        actions: const [],
       ),
       body: Column(
         children: [

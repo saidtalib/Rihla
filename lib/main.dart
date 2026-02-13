@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_options.dart';
@@ -12,8 +13,8 @@ import 'services/payment_service.dart';
 import 'ui/screens/confirm_profile_screen.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/login_screen.dart';
+import 'ui/screens/settings_screen.dart';
 import 'ui/theme/app_theme.dart';
-import 'ui/widgets/settings_toggles.dart';
 
 // ──────────────────────────────────────────────
 //  Entry point
@@ -30,14 +31,17 @@ Future<void> main() async {
     debugPrint('[main] Firebase init skipped: $e');
   }
 
-  // 2. RevenueCat
+  // 2. Load persisted settings
+  final settingsData = await AppSettingsData.load();
+
+  // 3. RevenueCat
   try {
     await PaymentService.instance.init();
   } catch (e) {
     debugPrint('[main] RevenueCat init skipped: $e');
   }
 
-  // 3. AdMob
+  // 4. AdMob
   if (!kIsWeb) {
     try {
       await MonetizationManager.instance.init();
@@ -47,46 +51,173 @@ Future<void> main() async {
     }
   }
 
-  runApp(const RihlaApp());
+  runApp(RihlaApp(settingsData: settingsData));
 }
 
 // ──────────────────────────────────────────────
 //  Root Widget
 // ──────────────────────────────────────────────
 class RihlaApp extends StatefulWidget {
-  const RihlaApp({super.key});
+  const RihlaApp({super.key, required this.settingsData});
+  final AppSettingsData settingsData;
 
   @override
   State<RihlaApp> createState() => _RihlaAppState();
 }
 
 class _RihlaAppState extends State<RihlaApp> {
-  bool _isArabic = false;
-  bool _isDarkMode = false;
+  late AppSettingsData _settings;
 
-  void _toggleLanguage() => setState(() => _isArabic = !_isArabic);
-  void _toggleDarkMode() => setState(() => _isDarkMode = !_isDarkMode);
+  @override
+  void initState() {
+    super.initState();
+    _settings = widget.settingsData;
+  }
+
+  void _onSettingsChanged() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
     return AppSettings(
-      isArabic: _isArabic,
-      isDarkMode: _isDarkMode,
-      toggleLanguage: _toggleLanguage,
-      toggleDarkMode: _toggleDarkMode,
+      data: _settings,
+      onChanged: _onSettingsChanged,
       child: MaterialApp(
         title: 'Rihla',
         debugShowCheckedModeBanner: false,
-        theme: buildRihlaTheme(isArabic: _isArabic, isDark: _isDarkMode),
+        theme: buildRihlaTheme(isArabic: _settings.isArabic, isDark: false),
+        darkTheme: buildRihlaTheme(isArabic: _settings.isArabic, isDark: true),
+        themeMode: _settings.themeMode,
         builder: (context, child) {
           return Directionality(
-            textDirection: _isArabic ? TextDirection.rtl : TextDirection.ltr,
+            textDirection:
+                _settings.isArabic ? TextDirection.rtl : TextDirection.ltr,
             child: child!,
           );
         },
-        home: const _AuthGate(),
+        home: const _PermissionGate(),
       ),
     );
+  }
+}
+
+// ──────────────────────────────────────────────
+//  Permission Gate — one-time location dialog
+// ──────────────────────────────────────────────
+class _PermissionGate extends StatefulWidget {
+  const _PermissionGate();
+
+  @override
+  State<_PermissionGate> createState() => _PermissionGateState();
+}
+
+class _PermissionGateState extends State<_PermissionGate> {
+  bool _checked = false;
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_started) {
+      _started = true;
+      _checkPermissions();
+    }
+  }
+
+  Future<void> _checkPermissions() async {
+    // Skip on web — the browser handles permissions natively
+    if (kIsWeb) {
+      setState(() => _checked = true);
+      return;
+    }
+
+    final settings = AppSettings.of(context).data;
+
+    // Only ask once per install
+    if (settings.permissionAsked) {
+      setState(() => _checked = true);
+      return;
+    }
+
+    final permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      await settings.setPermissionAsked(true);
+      if (mounted) setState(() => _checked = true);
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Show the "Why we need this" dialog
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        final ar = AppSettings.of(ctx).isArabic;
+        return AlertDialog(
+          icon: const Icon(Icons.explore_rounded, size: 40),
+          title: Text(ar ? 'خدمة الموقع' : 'Location Access'),
+          content: Text(
+            ar
+                ? 'يستخدم تطبيق رحلة موقعك لعرض موضعك على خرائط الرحلات وتوفير التنقل.'
+                : 'Rihla uses your location to show your position on trip maps and provide navigation directions.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(ar ? 'لاحقاً' : 'Maybe Later'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(ar ? 'السماح' : 'Allow'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == true) {
+      final newPerm = await Geolocator.requestPermission();
+      if (newPerm == LocationPermission.deniedForever && mounted) {
+        await showDialog(
+          context: context,
+          builder: (ctx) {
+            final ar = AppSettings.of(ctx).isArabic;
+            return AlertDialog(
+              title: Text(ar ? 'الإذن مرفوض' : 'Permission Denied'),
+              content: Text(
+                ar
+                    ? 'تم رفض إذن الموقع نهائياً. يمكنك تغييره من إعدادات الجهاز.'
+                    : 'Location permission has been permanently denied. You can change this from your device Settings.',
+              ),
+              actions: [
+                ElevatedButton(
+                  onPressed: () {
+                    Geolocator.openAppSettings();
+                    Navigator.pop(ctx);
+                  },
+                  child: Text(ar ? 'فتح الإعدادات' : 'Open Settings'),
+                ),
+              ],
+            );
+          },
+        );
+      }
+    }
+
+    await settings.setPermissionAsked(true);
+    if (mounted) setState(() => _checked = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_checked) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return const _AuthGate();
   }
 }
 
@@ -130,7 +261,7 @@ class _AuthGate extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────
-//  Main Screen (AppBar + Home — no bottom nav)
+//  Main Screen (Clean AppBar — no globe, no toggles)
 // ──────────────────────────────────────────────
 class MainScreen extends StatelessWidget {
   const MainScreen({super.key});
@@ -144,12 +275,6 @@ class MainScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 12),
-          child: Center(
-            child: Text('🌍', style: const TextStyle(fontSize: 26)),
-          ),
-        ),
         title: Text(
           'Rihla',
           style: GoogleFonts.inter(
@@ -158,8 +283,17 @@ class MainScreen extends StatelessWidget {
             letterSpacing: 0.5,
           ),
         ),
+        centerTitle: false,
         actions: [
-          const SettingsToggles(),
+          // Settings icon
+          IconButton(
+            icon: const Icon(Icons.settings_rounded, size: 22),
+            tooltip: ar ? 'الإعدادات' : 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
           // Profile avatar / sign out
           PopupMenuButton<String>(
             offset: const Offset(0, 48),

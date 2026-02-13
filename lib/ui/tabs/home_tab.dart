@@ -150,7 +150,8 @@ class _HomeTabState extends State<HomeTab> with AutomaticKeepAliveClientMixin {
               children: [
                 Row(
                   children: [
-                    const Text('🌍', style: TextStyle(fontSize: 28)),
+                    Icon(Icons.flight_takeoff_rounded,
+                        size: 28, color: Theme.of(context).colorScheme.primary),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(

@@ -7,7 +7,6 @@ import '../../core/theme.dart';
 import '../../services/ai_service.dart';
 import '../../services/trip_service.dart';
 import '../widgets/ad_banner.dart';
-import '../widgets/settings_toggles.dart';
 import 'trip_details_screen.dart';
 
 /// Free step: Describe your trip in any way, Gemini AI extracts everything.
@@ -137,7 +136,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(ar ? 'إنشاء رحلة' : 'Create Trip'),
-        actions: const [SettingsToggles()],
+        actions: const [],
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
