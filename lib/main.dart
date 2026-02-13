@@ -17,7 +17,7 @@ import 'ui/screens/confirm_profile_screen.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/screens/login_screen.dart';
 import 'ui/screens/settings_screen.dart';
-import 'ui/theme/app_theme.dart';
+import 'core/app_theme.dart';
 
 // ──────────────────────────────────────────────
 //  Entry point

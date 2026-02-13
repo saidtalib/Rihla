@@ -127,27 +127,35 @@ class _VaultTabState extends State<VaultTab>
         final items = snap.data ?? [];
 
         if (items.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.folder_open_rounded,
-                    size: 64,
-                    color: cs.onSurface.withValues(alpha: 0.25)),
-                const SizedBox(height: 16),
-                Text(ar ? 'الخزنة فارغة' : 'Vault is empty',
-                    style: tt.titleMedium),
-                const SizedBox(height: 8),
-                Text(
-                  ar
-                      ? 'الملفات المرسلة في الدردشة تظهر هنا تلقائيًا'
-                      : 'Files sent in chat appear here automatically',
-                  style: tt.bodySmall?.copyWith(
-                    color: cs.onSurface.withValues(alpha: 0.5),
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Card(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.folder_open_rounded,
+                          size: 64,
+                          color: cs.onSurface.withValues(alpha: 0.25)),
+                      const SizedBox(height: 16),
+                      Text(ar ? 'الخزنة فارغة' : 'Vault is empty',
+                          style: tt.titleMedium),
+                      const SizedBox(height: 8),
+                      Text(
+                        ar
+                            ? 'الملفات المرسلة في الدردشة تظهر هنا تلقائيًا'
+                            : 'Files sent in chat appear here automatically',
+                        style: tt.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.5),
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
-                  textAlign: TextAlign.center,
                 ),
-              ],
+              ),
             ),
           );
         }
@@ -156,7 +164,11 @@ class _VaultTabState extends State<VaultTab>
             items.where((i) => i['file_type'] == 'image').toList();
         final pdfs = items.where((i) => i['file_type'] == 'pdf').toList();
 
-        return CustomScrollView(
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Card(
+            clipBehavior: Clip.antiAlias,
+            child: CustomScrollView(
           slivers: [
             // ── Images section ────────────────────
             if (images.isNotEmpty) ...[
@@ -227,6 +239,8 @@ class _VaultTabState extends State<VaultTab>
 
             const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
           ],
+            ),
+          ),
         );
       },
     );

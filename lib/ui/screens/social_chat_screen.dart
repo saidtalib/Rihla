@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -30,14 +33,18 @@ class SocialChatScreen extends StatefulWidget {
 }
 
 class _SocialChatScreenState extends State<SocialChatScreen>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, TickerProviderStateMixin {
   final _msgCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   bool _uploading = false;
   bool _recording = false;
+  int _recordingSeconds = 0;
+  late final AnimationController _recordingPulse;
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _playingAudioUrl;
+  Timer? _recordingTimer;
+  bool _scrollToBottomPending = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -45,6 +52,10 @@ class _SocialChatScreenState extends State<SocialChatScreen>
   @override
   void initState() {
     super.initState();
+    _recordingPulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
     _audioPlayer.onPlayerComplete.listen((_) {
       if (mounted) setState(() => _playingAudioUrl = null);
     });
@@ -55,6 +66,8 @@ class _SocialChatScreenState extends State<SocialChatScreen>
 
   @override
   void dispose() {
+    _recordingTimer?.cancel();
+    _recordingPulse.dispose();
     _audioPlayer.dispose();
     _msgCtrl.dispose();
     _scrollCtrl.dispose();
@@ -95,12 +108,16 @@ class _SocialChatScreenState extends State<SocialChatScreen>
     }
   }
 
+  void _requestScrollToBottomAfterNextBuild() {
+    _scrollToBottomPending = true;
+  }
+
   Future<void> _send() async {
     final text = _msgCtrl.text.trim();
     if (text.isEmpty) return;
     _msgCtrl.clear();
     await ChatService.instance.sendText(widget.trip.id, text);
-    _scrollToBottom();
+    _requestScrollToBottomAfterNextBuild();
   }
 
   Future<void> _showAttachmentMenu() async {
@@ -164,21 +181,19 @@ class _SocialChatScreenState extends State<SocialChatScreen>
             ListTile(
               leading: CircleAvatar(
                 backgroundColor: Theme.of(context).colorScheme.tertiary,
-                child: Icon(
-                  _recording ? Icons.stop_rounded : Icons.mic_rounded,
-                  color: Colors.white,
+                child: const Icon(Icons.mic_rounded, color: Colors.white),
+              ),
+              title: Text(ar ? 'تسجيل صوتي' : 'Record Audio'),
+              subtitle: Text(
+                ar ? 'إيقاف وإرسال من شريط التسجيل' : 'Stop & send from recording bar',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(ctx).textTheme.bodySmall?.color?.withValues(alpha: 0.7),
                 ),
               ),
-              title: Text(ar
-                  ? (_recording ? 'إيقاف التسجيل' : 'Record Audio')
-                  : (_recording ? 'Stop Recording' : 'Record Audio')),
               onTap: () {
                 Navigator.pop(ctx);
-                if (_recording) {
-                  _stopRecording();
-                } else {
-                  _startRecording();
-                }
+                _startRecording();
               },
             ),
             ListTile(
@@ -211,7 +226,7 @@ class _SocialChatScreenState extends State<SocialChatScreen>
         bytes,
         'photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
       );
-      _scrollToBottom();
+      _requestScrollToBottomAfterNextBuild();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -221,6 +236,8 @@ class _SocialChatScreenState extends State<SocialChatScreen>
       if (mounted) setState(() => _uploading = false);
     }
   }
+
+  static const _placesApiKey = 'AIzaSyAVUV8GhNI8Wpj-p87YomE7L8_viPMmC28'; // Enable Places API in Cloud Console
 
   Future<void> _shareLocation() async {
     final ar = AppSettings.of(context).isArabic;
@@ -242,13 +259,34 @@ class _SocialChatScreenState extends State<SocialChatScreen>
       }
       setState(() => _uploading = true);
       final pos = await Geolocator.getCurrentPosition();
+      final lat = pos.latitude;
+      final lng = pos.longitude;
+
+      final places = await _fetchNearbyPlaces(lat, lng);
+      if (!mounted) return;
+      setState(() => _uploading = false);
+
+      final chosen = await showModalBottomSheet<({double lat, double lng, String label})>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => _LocationPickerSheet(
+          currentLat: lat,
+          currentLng: lng,
+          places: places,
+          isArabic: ar,
+        ),
+      );
+      if (chosen == null || !mounted) return;
+
+      setState(() => _uploading = true);
       await ChatService.instance.sendLocation(
         widget.trip.id,
-        pos.latitude,
-        pos.longitude,
-        ar ? 'موقعي' : 'My location',
+        chosen.lat,
+        chosen.lng,
+        chosen.label,
       );
-      _scrollToBottom();
+      _requestScrollToBottomAfterNextBuild();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -259,6 +297,55 @@ class _SocialChatScreenState extends State<SocialChatScreen>
       );
     } finally {
       if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<List<({String name, String? vicinity, double lat, double lng})>> _fetchNearbyPlaces(double lat, double lng) async {
+    try {
+      final uri = Uri.parse(
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+        '?location=$lat,$lng'
+        '&radius=500'
+        '&key=$_placesApiKey',
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return [];
+      final json = response.body;
+      final data = _jsonDecodeMap(json);
+      if (data == null) return [];
+      final results = data['results'] as List<dynamic>?;
+      if (results == null) return [];
+      final list = <({String name, String? vicinity, double lat, double lng})>[];
+      for (final r in results.take(15)) {
+        final m = r is Map ? r as Map<String, dynamic> : null;
+        if (m == null) continue;
+        final geo = m['geometry'] as Map<String, dynamic>?;
+        final loc = geo?['location'] as Map<String, dynamic>?;
+        final latV = loc?['lat'];
+        final lngV = loc?['lng'];
+        final name = m['name'] as String? ?? '';
+        final vicinity = m['vicinity'] as String?;
+        if (name.isNotEmpty && latV != null && lngV != null) {
+          list.add((
+            name: name,
+            vicinity: vicinity,
+            lat: (latV is num) ? latV.toDouble() : double.tryParse(latV.toString()) ?? 0,
+            lng: (lngV is num) ? lngV.toDouble() : double.tryParse(lngV.toString()) ?? 0,
+          ));
+        }
+      }
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Map<String, dynamic>? _jsonDecodeMap(String source) {
+    try {
+      final decoded = jsonDecode(source);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -335,7 +422,7 @@ class _SocialChatScreenState extends State<SocialChatScreen>
                             name,
                             phone,
                           );
-                          _scrollToBottom();
+                          _requestScrollToBottomAfterNextBuild();
                         } catch (e) {
                           if (!mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -363,7 +450,14 @@ class _SocialChatScreenState extends State<SocialChatScreen>
   Future<void> _startRecording() async {
     final ar = AppSettings.of(context).isArabic;
     if (await _recorder.hasPermission()) {
-      setState(() => _recording = true);
+      setState(() {
+        _recording = true;
+        _recordingSeconds = 0;
+      });
+      _recordingTimer?.cancel();
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() => _recordingSeconds++);
+      });
       final tempDir = await getTemporaryDirectory();
       final path = '${tempDir.path}/rihla_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc), path: path);
@@ -378,9 +472,16 @@ class _SocialChatScreenState extends State<SocialChatScreen>
     }
   }
 
+  void _cancelRecording() async {
+    _recordingTimer?.cancel();
+    await _recorder.stop();
+    if (mounted) setState(() => _recording = false);
+  }
+
   Future<void> _stopRecording() async {
+    _recordingTimer?.cancel();
     final path = await _recorder.stop();
-    setState(() => _recording = false);
+    if (mounted) setState(() => _recording = false);
     if (path == null || path.isEmpty) return;
     setState(() => _uploading = true);
     try {
@@ -391,7 +492,7 @@ class _SocialChatScreenState extends State<SocialChatScreen>
           bytes,
           'audio_${DateTime.now().millisecondsSinceEpoch}.m4a',
         );
-        _scrollToBottom();
+        _requestScrollToBottomAfterNextBuild();
       }
     } catch (e) {
       if (!mounted) return;
@@ -419,7 +520,7 @@ class _SocialChatScreenState extends State<SocialChatScreen>
         picked.bytes!,
         picked.name,
       );
-      _scrollToBottom();
+      _requestScrollToBottomAfterNextBuild();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -447,7 +548,7 @@ class _SocialChatScreenState extends State<SocialChatScreen>
         picked.bytes!,
         picked.name,
       );
-      _scrollToBottom();
+      _requestScrollToBottomAfterNextBuild();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -571,10 +672,14 @@ class _SocialChatScreenState extends State<SocialChatScreen>
                 );
               }
 
-              WidgetsBinding.instance
-                  .addPostFrameCallback((_) => _scrollToBottom());
-
+              if (_scrollToBottomPending) {
+                _scrollToBottomPending = false;
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) _scrollToBottom();
+                });
+              }
               return ListView.builder(
+                key: const ValueKey('chat_list'),
                 controller: _scrollCtrl,
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 itemCount: messages.length,
@@ -626,47 +731,201 @@ class _SocialChatScreenState extends State<SocialChatScreen>
           BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2))
         ],
       ),
-      child: Row(
-        children: [
-          IconButton(
-            icon: _uploading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(Icons.add_circle_rounded,
-                    color: cs.primary, size: 28),
-            onPressed: _uploading ? null : _showAttachmentMenu,
-          ),
-          Expanded(
-            child: TextField(
-              controller: _msgCtrl,
-              keyboardType: TextInputType.text,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _send(),
-              style: TextStyle(fontSize: 15, color: cs.onSurface),
-              decoration: InputDecoration(
-                hintText: ar ? 'اكتب رسالة...' : 'Type a message...',
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(25),
-                    borderSide: BorderSide.none),
-                filled: true,
-                fillColor: dark
-                    ? cs.surfaceContainerHighest
-                    : cs.surfaceContainerLowest,
+      child: _recording ? _buildRecordingBar(ar, cs) : _buildNormalInputRow(ar, dark, cs),
+    );
+  }
+
+  Widget _buildRecordingBar(bool ar, ColorScheme cs) {
+    final secs = _recordingSeconds;
+    final durationStr = '${secs ~/ 60}:${(secs % 60).toString().padLeft(2, '0')}';
+    return Row(
+      children: [
+        IconButton(
+          icon: Icon(Icons.add_circle_outline_rounded, color: cs.onSurface.withValues(alpha: 0.5), size: 28),
+          onPressed: null,
+        ),
+        Expanded(
+          child: Row(
+            children: [
+              AnimatedBuilder(
+                animation: _recordingPulse,
+                builder: (_, child) {
+                  return Transform.scale(
+                    scale: 0.85 + 0.15 * _recordingPulse.value,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: cs.errorContainer.withValues(alpha: 0.5),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.mic_rounded, color: cs.error, size: 24),
+                    ),
+                  );
+                },
               ),
+              const SizedBox(width: 12),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    ar ? 'جاري التسجيل...' : 'Recording...',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                  Text(
+                    durationStr,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: Icon(Icons.delete_outline_rounded, color: cs.onSurface),
+          tooltip: ar ? 'إلغاء' : 'Delete',
+          onPressed: _cancelRecording,
+        ),
+        CircleAvatar(
+          backgroundColor: cs.primary,
+          radius: 22,
+          child: IconButton(
+            icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+            tooltip: ar ? 'إرسال' : 'Send',
+            onPressed: _stopRecording,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNormalInputRow(bool ar, bool dark, ColorScheme cs) {
+    return Row(
+      children: [
+        IconButton(
+          icon: _uploading
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Icon(Icons.add_circle_rounded, color: cs.primary, size: 28),
+          onPressed: _uploading ? null : _showAttachmentMenu,
+        ),
+        Expanded(
+          child: TextField(
+            controller: _msgCtrl,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _send(),
+            style: TextStyle(fontSize: 15, color: cs.onSurface),
+            decoration: InputDecoration(
+              hintText: ar ? 'اكتب رسالة...' : 'Type a message...',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25),
+                  borderSide: BorderSide.none),
+              filled: true,
+              fillColor: dark
+                  ? cs.surfaceContainerHighest
+                  : cs.surfaceContainerLowest,
             ),
           ),
-          const SizedBox(width: 6),
-          CircleAvatar(
-            backgroundColor: cs.primary,
-            radius: 22,
-            child: IconButton(
-              icon: const Icon(Icons.send_rounded,
-                  color: Colors.white, size: 20),
-              onPressed: _send,
+        ),
+        const SizedBox(width: 6),
+        CircleAvatar(
+          backgroundColor: cs.primary,
+          radius: 22,
+          child: IconButton(
+            icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+            onPressed: _send,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════
+//  Location picker sheet (My location + nearby POIs)
+// ═════════════════════════════════════════════════
+class _LocationPickerSheet extends StatelessWidget {
+  const _LocationPickerSheet({
+    required this.currentLat,
+    required this.currentLng,
+    required this.places,
+    required this.isArabic,
+  });
+
+  final double currentLat;
+  final double currentLng;
+  final List<({String name, String? vicinity, double lat, double lng})> places;
+  final bool isArabic;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.5,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Text(
+            isArabic ? 'مشاركة الموقع' : 'Share Location',
+            style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              children: [
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: cs.primaryContainer,
+                    child: Icon(Icons.my_location_rounded, color: cs.primary),
+                  ),
+                  title: Text(isArabic ? 'موقعي' : 'My location'),
+                  subtitle: Text('$currentLat, $currentLng', style: tt.bodySmall),
+                  onTap: () => Navigator.pop(context, (lat: currentLat, lng: currentLng, label: isArabic ? 'موقعي' : 'My location')),
+                ),
+                if (places.isNotEmpty) ...[
+                  const Divider(),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      isArabic ? 'أماكن قريبة' : 'Nearby places',
+                      style: tt.titleSmall?.copyWith(color: cs.onSurface.withValues(alpha: 0.7)),
+                    ),
+                  ),
+                  ...places.map((p) => ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: cs.surfaceContainerHighest,
+                      child: Icon(Icons.place_rounded, color: cs.onSurfaceVariant, size: 22),
+                    ),
+                    title: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: p.vicinity != null
+                        ? Text(p.vicinity!, maxLines: 1, overflow: TextOverflow.ellipsis, style: tt.bodySmall)
+                        : null,
+                    onTap: () => Navigator.pop(context, (lat: p.lat, lng: p.lng, label: p.name)),
+                  )),
+                ],
+              ],
             ),
           ),
         ],

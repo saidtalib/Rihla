@@ -80,8 +80,9 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
         if (response.statusCode != 200 || !mounted) continue;
         final decoded = img.decodeImage(response.bodyBytes);
         if (decoded == null || !mounted) continue;
-        final resized = img.copyResize(decoded, width: 64, height: 64);
-        final pngBytes = img.encodePng(resized);
+        final resized = img.copyResize(decoded, width: 32, height: 32);
+        final circular = img.copyCropCircle(resized, radius: 16);
+        final pngBytes = img.encodePng(circular);
         if (pngBytes.isEmpty || !mounted) continue;
         final descriptor = BitmapDescriptor.bytes(pngBytes);
         if (!mounted) continue;

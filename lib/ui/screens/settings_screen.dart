@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/app_settings.dart';
 import '../../services/auth_service.dart';
+import '../../ui/theme/app_theme.dart';
 import 'account_screen.dart';
 import 'support_screen.dart';
 
@@ -27,184 +28,215 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(ar ? 'الإعدادات' : 'Settings'),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         children: [
           // ═════════════════════════════════════════
-          //  ACCOUNT (sub-screen)
+          //  ACCOUNT CARD
           // ═════════════════════════════════════════
-          _SectionHeader(
-              label: ar ? 'الحساب' : 'Account', icon: Icons.person_rounded),
-          const SizedBox(height: 8),
-          ListTile(
-            leading: Icon(Icons.person_rounded, color: cs.onSurface.withValues(alpha: 0.7)),
-            title: Text(ar ? 'الملف الشخصي والسلامة' : 'Profile & safety'),
-            subtitle: Text(ar ? 'الاسم، الصورة، حذف الحساب' : 'Name, photo, delete account'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AccountScreen()),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: _SectionHeader(
+                        label: ar ? 'الحساب' : 'Account',
+                        icon: Icons.person_rounded),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.person_rounded,
+                        color: cs.primary),
+                    title: Text(ar ? 'الملف الشخصي والسلامة' : 'Profile & safety'),
+                    subtitle: Text(ar ? 'الاسم، الصورة، حذف الحساب' : 'Name, photo, delete account'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const AccountScreen()),
+                    ),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.support_rounded, color: cs.primary),
+                    title: Text(ar ? 'الدعم' : 'Support'),
+                    subtitle: Text(ar ? 'إرسال ملاحظات أو طلب مساعدة' : 'Send feedback or get help'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SupportScreen()),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 16),
 
           // ═════════════════════════════════════════
-          //  SUPPORT
+          //  PREFERENCES CARD
           // ═════════════════════════════════════════
-          ListTile(
-            leading: Icon(Icons.support_rounded, color: cs.onSurface.withValues(alpha: 0.7)),
-            title: Text(ar ? 'الدعم' : 'Support'),
-            subtitle: Text(ar ? 'إرسال ملاحظات أو طلب مساعدة' : 'Send feedback or get help'),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SupportScreen()),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: _SectionHeader(
+                        label: ar ? 'التفضيلات' : 'Preferences',
+                        icon: Icons.tune_rounded),
+                  ),
+                  const SizedBox(height: 4),
+                  // Language
+                  _PreferenceRow(
+                    label: ar ? 'اللغة' : 'Language',
+                    icon: Icons.language_rounded,
+                    child: SegmentedButton<bool>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(value: false, label: Text('EN')),
+                        ButtonSegment(value: true, label: Text('عربي')),
+                      ],
+                      selected: {data.isArabic},
+                      onSelectionChanged: (v) {
+                        data.setArabic(v.first);
+                        settings.onChanged();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Theme
+                  _PreferenceRow(
+                    label: ar ? 'المظهر' : 'Theme',
+                    icon: Icons.palette_rounded,
+                    child: SegmentedButton<ThemeMode>(
+                      showSelectedIcon: false,
+                      segments: [
+                        ButtonSegment(
+                            value: ThemeMode.system,
+                            label: Text(ar ? 'تلقائي' : 'Auto',
+                                style: const TextStyle(fontSize: 12))),
+                        ButtonSegment(
+                            value: ThemeMode.light,
+                            label: Text(ar ? 'فاتح' : 'Light',
+                                style: const TextStyle(fontSize: 12))),
+                        ButtonSegment(
+                            value: ThemeMode.dark,
+                            label: Text(ar ? 'داكن' : 'Dark',
+                                style: const TextStyle(fontSize: 12))),
+                      ],
+                      selected: {data.themeMode},
+                      onSelectionChanged: (v) {
+                        data.setThemeMode(v.first);
+                        settings.onChanged();
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Units
+                  SwitchListTile(
+                    secondary: const Icon(Icons.straighten_rounded),
+                    title: Text(ar ? 'الوحدات' : 'Units'),
+                    subtitle: Text(data.useMetric
+                        ? (ar ? 'متري (كم / °م)' : 'Metric (km / °C)')
+                        : (ar ? 'إمبراطوري (ميل / °ف)' : 'Imperial (mi / °F)')),
+                    value: data.useMetric,
+                    onChanged: (v) {
+                      data.setUseMetric(v);
+                      settings.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  // Date format
+                  SwitchListTile(
+                    secondary: const Icon(Icons.calendar_today_rounded),
+                    title: Text(ar ? 'تنسيق التاريخ' : 'Date Format'),
+                    subtitle: Text(data.useDDMMYYYY ? 'DD/MM/YYYY' : 'MM/DD/YYYY'),
+                    value: data.useDDMMYYYY,
+                    onChanged: (v) {
+                      data.setUseDDMMYYYY(v);
+                      settings.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 24),
 
           // ═════════════════════════════════════════
-          //  PREFERENCES SECTION
+          //  NOTIFICATION CARD
           // ═════════════════════════════════════════
-          _SectionHeader(
-              label: ar ? 'التفضيلات' : 'Preferences',
-              icon: Icons.tune_rounded),
-          const SizedBox(height: 12),
-
-          // Language
-          _PreferenceRow(
-            label: ar ? 'اللغة' : 'Language',
-            icon: Icons.language_rounded,
-            child: SegmentedButton<bool>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: false, label: Text('EN')),
-                ButtonSegment(value: true, label: Text('عربي')),
-              ],
-              selected: {data.isArabic},
-              onSelectionChanged: (v) {
-                data.setArabic(v.first);
-                settings.onChanged();
-              },
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+                    child: _SectionHeader(
+                      label: ar ? 'مركز الإشعارات' : 'Notification Center',
+                      icon: Icons.notifications_rounded,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                    child: Text(
+                      ar
+                          ? 'اختر الإشعارات التي تريد تلقيها'
+                          : 'Choose which notifications you receive',
+                      style: tt.bodySmall?.copyWith(color: R.textSecondary),
+                    ),
+                  ),
+                  _NotifSwitch(
+                    icon: Icons.chat_bubble_rounded,
+                    label: ar ? 'رسالة جديدة (العزوة)' : 'New Chat Message (Pack)',
+                    value: data.notifChat,
+                    onChanged: (v) {
+                      data.setNotifChat(v);
+                      settings.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  _NotifSwitch(
+                    icon: Icons.monetization_on_rounded,
+                    label: ar ? 'مصروف جديد (الجطية)' : 'New Expense Added (Kitty)',
+                    value: data.notifExpense,
+                    onChanged: (v) {
+                      data.setNotifExpense(v);
+                      settings.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  _NotifSwitch(
+                    icon: Icons.route_rounded,
+                    label: ar ? 'تحديث الخطة' : 'Plan Updated (Trip Details)',
+                    value: data.notifPlan,
+                    onChanged: (v) {
+                      data.setNotifPlan(v);
+                      settings.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                  _NotifSwitch(
+                    icon: Icons.photo_library_rounded,
+                    label: ar ? 'ملف/صورة جديدة (الخزنة)' : 'New Photo/Doc (Vault)',
+                    value: data.notifVault,
+                    onChanged: (v) {
+                      data.setNotifVault(v);
+                      settings.onChanged();
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 4),
-
-          // Theme
-          _PreferenceRow(
-            label: ar ? 'المظهر' : 'Theme',
-            icon: Icons.palette_rounded,
-            child: SegmentedButton<ThemeMode>(
-              showSelectedIcon: false,
-              segments: [
-                ButtonSegment(
-                    value: ThemeMode.system,
-                    label: Text(ar ? 'تلقائي' : 'Auto',
-                        style: const TextStyle(fontSize: 12))),
-                ButtonSegment(
-                    value: ThemeMode.light,
-                    label: Text(ar ? 'فاتح' : 'Light',
-                        style: const TextStyle(fontSize: 12))),
-                ButtonSegment(
-                    value: ThemeMode.dark,
-                    label: Text(ar ? 'داكن' : 'Dark',
-                        style: const TextStyle(fontSize: 12))),
-              ],
-              selected: {data.themeMode},
-              onSelectionChanged: (v) {
-                data.setThemeMode(v.first);
-                settings.onChanged();
-              },
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // Units
-          SwitchListTile(
-            secondary: const Icon(Icons.straighten_rounded),
-            title: Text(ar ? 'الوحدات' : 'Units'),
-            subtitle: Text(data.useMetric
-                ? (ar ? 'متري (كم / °م)' : 'Metric (km / °C)')
-                : (ar ? 'إمبراطوري (ميل / °ف)' : 'Imperial (mi / °F)')),
-            value: data.useMetric,
-            onChanged: (v) {
-              data.setUseMetric(v);
-              settings.onChanged();
-              setState(() {});
-            },
-          ),
-
-          // Date format
-          SwitchListTile(
-            secondary: const Icon(Icons.calendar_today_rounded),
-            title: Text(ar ? 'تنسيق التاريخ' : 'Date Format'),
-            subtitle: Text(data.useDDMMYYYY ? 'DD/MM/YYYY' : 'MM/DD/YYYY'),
-            value: data.useDDMMYYYY,
-            onChanged: (v) {
-              data.setUseDDMMYYYY(v);
-              settings.onChanged();
-              setState(() {});
-            },
-          ),
-          const SizedBox(height: 24),
-
-          // ═════════════════════════════════════════
-          //  NOTIFICATION CENTER
-          // ═════════════════════════════════════════
-          _SectionHeader(
-            label: ar ? 'مركز الإشعارات' : 'Notification Center',
-            icon: Icons.notifications_rounded,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            ar
-                ? 'اختر الإشعارات التي تريد تلقيها'
-                : 'Choose which notifications you receive',
-            style: tt.bodySmall
-                ?.copyWith(color: cs.onSurface.withValues(alpha: 0.5)),
-          ),
-          const SizedBox(height: 8),
-
-          _NotifSwitch(
-            icon: Icons.chat_bubble_rounded,
-            label: ar ? 'رسالة جديدة (العزوة)' : 'New Chat Message (Pack)',
-            value: data.notifChat,
-            onChanged: (v) {
-              data.setNotifChat(v);
-              settings.onChanged();
-              setState(() {});
-            },
-          ),
-          _NotifSwitch(
-            icon: Icons.monetization_on_rounded,
-            label: ar ? 'مصروف جديد (الجطية)' : 'New Expense Added (Kitty)',
-            value: data.notifExpense,
-            onChanged: (v) {
-              data.setNotifExpense(v);
-              settings.onChanged();
-              setState(() {});
-            },
-          ),
-          _NotifSwitch(
-            icon: Icons.route_rounded,
-            label: ar ? 'تحديث الخطة' : 'Plan Updated (Trip Details)',
-            value: data.notifPlan,
-            onChanged: (v) {
-              data.setNotifPlan(v);
-              settings.onChanged();
-              setState(() {});
-            },
-          ),
-          _NotifSwitch(
-            icon: Icons.photo_library_rounded,
-            label: ar ? 'ملف/صورة جديدة (الخزنة)' : 'New Photo/Doc (Vault)',
-            value: data.notifVault,
-            onChanged: (v) {
-              data.setNotifVault(v);
-              settings.onChanged();
-              setState(() {});
-            },
-          ),
-          const SizedBox(height: 32),
 
           // ═════════════════════════════════════════
           //  SIGN OUT

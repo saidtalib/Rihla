@@ -24,12 +24,16 @@ class R {
   static const Color slate100 = Color(0xFFF1F5F9);
   static const Color slate50 = Color(0xFFF8FAFC);
 
-  // Surfaces
-  static const Color white = Colors.white;
-  static const Color background = Color(0xFFFAFAFC);
-  static const Color surface = Colors.white;
+  // Surfaces (minimalist travel aesthetic)
+  static const Color white = Color(0xFFFFFFFF);
+  static const Color background = Color(0xFFFFFFFF);
+  static const Color surface = Color(0xFFF9FAFB);
   static const Color surfaceDark = Color(0xFF111827);
   static const Color cardDark = Color(0xFF1F2937);
+
+  // Text
+  static const Color textPrimary = Color(0xFF111827);
+  static const Color textSecondary = Color(0xFF6B7280);
 
   // Semantic
   static const Color success = Color(0xFF10B981);
@@ -37,17 +41,17 @@ class R {
   static const Color warning = Color(0xFFF59E0B);
   static const Color info = Color(0xFF3B82F6);
 
-  // Legacy safari colors (for backward compatibility in tabs)
-  static const Color jungleGreen = Color(0xFF2D5A27);
-  static const Color saharaSand = Color(0xFFF4EBD0);
-  static const Color sunsetOrange = Color(0xFFFF8C00);
-  static const Color jungleGreenDark = Color(0xFF1B3A18);
-  static const Color jungleGreenLight = Color(0xFF4A7A42);
-  static const Color saharaSandDark = Color(0xFFE0D5B0);
+  // Legacy names → Indigo/Slate (minimalist travel theme)
+  static const Color jungleGreen = indigo;
+  static const Color jungleGreenDark = indigoDark;
+  static const Color jungleGreenLight = indigoLight;
+  static const Color saharaSand = surface;
+  static const Color saharaSandDark = slate100;
+  static const Color sunsetOrange = indigo;
+  static const Color sunsetOrangeLight = indigoLight;
   static const Color darkSurface = Color(0xFF1A1A2E);
   static const Color darkCard = Color(0xFF252540);
   static const Color darkText = Color(0xFFE8E8EE);
-  static const Color sunsetOrangeLight = Color(0xFFFFAB40);
 
   // Radius
   static const double radiusSm = 8;
@@ -95,8 +99,9 @@ ThemeData buildRihlaLightTheme({bool isArabic = false}) {
     secondary: R.slate600,
     onSecondary: Colors.white,
     tertiary: R.warning,
-    surface: R.white,
-    onSurface: R.slate900,
+    surface: R.surface,
+    onSurface: R.textPrimary,
+    surfaceContainerHighest: R.surface,
     error: R.error,
     onError: Colors.white,
   );
@@ -110,39 +115,55 @@ ThemeData buildRihlaLightTheme({bool isArabic = false}) {
 
   final textTheme = _buildTextTheme(base.textTheme, isArabic: isArabic);
 
+  const capsuleShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(24)),
+  );
+
   return base.copyWith(
-    textTheme: textTheme,
+    textTheme: textTheme.copyWith(
+      bodyLarge: textTheme.bodyLarge?.copyWith(color: R.textSecondary),
+      bodyMedium: textTheme.bodyMedium?.copyWith(color: R.textSecondary),
+      bodySmall: textTheme.bodySmall?.copyWith(color: R.textSecondary),
+    ),
     appBarTheme: AppBarTheme(
       backgroundColor: R.white,
-      foregroundColor: R.slate900,
+      foregroundColor: R.textPrimary,
       elevation: 0,
       scrolledUnderElevation: 0.5,
       centerTitle: true,
       surfaceTintColor: Colors.transparent,
       titleTextStyle: textTheme.titleLarge?.copyWith(
-        color: R.slate900,
+        color: R.textPrimary,
         fontSize: 20,
       ),
       iconTheme: const IconThemeData(color: R.slate700),
     ),
     cardTheme: CardThemeData(
-      color: R.white,
-      elevation: 0,
+      color: R.surface,
+      elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(R.radiusLg),
-        side: BorderSide(color: R.slate200),
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: R.slate200.withValues(alpha: 0.8)),
       ),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: R.indigo,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+        shape: capsuleShape,
+        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+      ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: R.indigo,
         foregroundColor: Colors.white,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(R.radiusMd),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+        shape: capsuleShape,
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
@@ -150,20 +171,16 @@ ThemeData buildRihlaLightTheme({bool isArabic = false}) {
       style: OutlinedButton.styleFrom(
         foregroundColor: R.indigo,
         side: const BorderSide(color: R.slate300),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(R.radiusMd),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+        shape: capsuleShape,
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: R.indigo,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(R.radiusMd),
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        shape: capsuleShape,
         textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
     ),
@@ -172,8 +189,19 @@ ThemeData buildRihlaLightTheme({bool isArabic = false}) {
       foregroundColor: Colors.white,
       elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(R.radiusLg),
+        borderRadius: BorderRadius.circular(24),
       ),
+      extendedPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return R.indigo;
+        return null;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return R.indigo.withValues(alpha: 0.5);
+        return null;
+      }),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -281,21 +309,21 @@ ThemeData buildRihlaDarkTheme({bool isArabic = false}) {
     ),
     cardTheme: CardThemeData(
       color: R.cardDark,
-      elevation: 0,
+      elevation: 2,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(R.radiusLg),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: R.slate700),
       ),
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: R.indigoLight,
         foregroundColor: Colors.white,
         elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(R.radiusMd),
+          borderRadius: BorderRadius.circular(24),
         ),
         textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       ),
@@ -381,6 +409,16 @@ ThemeData buildRihlaDarkTheme({bool isArabic = false}) {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(R.radiusMd),
       ),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return R.indigoLight;
+        return null;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) return R.indigoLight.withValues(alpha: 0.5);
+        return null;
+      }),
     ),
   );
 }

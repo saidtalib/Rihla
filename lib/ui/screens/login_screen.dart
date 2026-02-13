@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/app_settings.dart';
 import '../../services/auth_service.dart';
 import '../../ui/theme/app_theme.dart';
+import 'login_background.dart';
 
 /// High-end login screen — Wanderlog-inspired.
 class LoginScreen extends StatefulWidget {
@@ -183,11 +184,17 @@ class _LoginScreenState extends State<LoginScreen> {
     final tt = Theme.of(context).textTheme;
 
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Top language toggle ───────────────────
-            Align(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ── Illustrated background (sky + hills + decorations) ──
+          const LoginBackground(),
+          // ── Login content on top ─────────────────────
+          SafeArea(
+            child: Column(
+              children: [
+                // ── Top language toggle ───────────────────
+                Align(
               alignment: Alignment.topRight,
               child: Padding(
                 padding: const EdgeInsets.only(top: 12, right: 16, left: 16),
@@ -317,10 +324,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                     fontWeight: FontWeight.w600),
                               ),
                               style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 28, vertical: 14),
                                 side: BorderSide(color: cs.outlineVariant),
                                 shape: RoundedRectangleBorder(
                                   borderRadius:
-                                      BorderRadius.circular(R.radiusMd),
+                                      BorderRadius.circular(24),
                                 ),
                               ),
                             ),
@@ -508,6 +517,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ],
         ),
       ),
+        ],
+      ),
     );
   }
 }
@@ -566,11 +577,12 @@ class _GoogleSignInButton extends StatelessWidget {
         onPressed: onTap,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
-          foregroundColor: R.slate800,
+          foregroundColor: R.textPrimary,
           elevation: 1,
           side: BorderSide(color: cs.outlineVariant),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(R.radiusMd),
+            borderRadius: BorderRadius.circular(24),
           ),
         ),
         child: Row(
@@ -623,8 +635,9 @@ class _AppleSignInButton extends StatelessWidget {
               ? cs.onSurface.withValues(alpha: 0.4)
               : Colors.white,
           elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(R.radiusMd),
+            borderRadius: BorderRadius.circular(24),
           ),
         ),
         child: Row(

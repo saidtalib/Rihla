@@ -362,21 +362,15 @@ class _KittyScreenState extends State<KittyScreen>
                       ),
                     ),
 
-                    // ── Admin settle button ─────────
+                    // ── Admin settle button (rounded Indigo) ─────────
                     if (isAdmin && !isSettled && allExpenses.isNotEmpty)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: R.error,
-                              side: const BorderSide(color: R.error),
-                            ),
+                          child: FilledButton.icon(
                             onPressed: () => _toggleSettle(trip),
                             icon: const Icon(Icons.gavel_rounded, size: 18),
-                            label: Text(ar
-                                ? 'تسوية وإغلاق الحسابات'
-                                : 'Settle & Close Trip'),
+                            label: Text(ar ? 'تسوية الحسابات' : 'Settle Up'),
                           ),
                         ),
                       ),
@@ -519,7 +513,7 @@ class _KittyScreenState extends State<KittyScreen>
                     child: FloatingActionButton.extended(
                       heroTag: 'add_expense',
                       icon: const Icon(Icons.add_rounded),
-                      label: Text(ar ? 'مصروف جديد' : 'Add Expense'),
+                      label: Text(ar ? '+ مصروف جديد' : '+ Add Expense'),
                       onPressed: () => _addExpense(trip),
                     ),
                   ),
@@ -660,7 +654,7 @@ class _ExpensesPieChart extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '${value.toStringAsFixed(1)} $baseCurrency (${pct.toStringAsFixed(0)}%)',
+                              '${value.toStringAsFixed(1)} (${pct.toStringAsFixed(0)}%)',
                               style: tt.bodySmall?.copyWith(
                                 fontSize: 11,
                                 color: cs.onSurface.withValues(alpha: 0.7),
@@ -740,13 +734,15 @@ class _SummaryCard extends StatelessWidget {
                     Text(
                       isArabic ? 'إجمالي المصاريف' : 'Total Spent',
                       style: tt.bodySmall?.copyWith(
-                        color: cs.onSurface.withValues(alpha: 0.5),
+                        color: R.textSecondary,
                       ),
                     ),
                     Text(
                       '${totalBase.toStringAsFixed(2)} $baseCurrency',
-                      style: tt.headlineSmall?.copyWith(
+                      style: tt.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w800,
+                        color: R.indigo,
+                        fontSize: 26,
                       ),
                     ),
                   ],
@@ -880,7 +876,11 @@ class _SettlementTile extends StatelessWidget {
                             : settlement.fromName,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      TextSpan(text: isArabic ? ' يدفع ' : ' pays '),
+                      TextSpan(
+                        text: isFromMe
+                            ? (isArabic ? ' تدفع ' : ' pay ')
+                            : (isArabic ? ' يدفع ' : ' pays '),
+                      ),
                       TextSpan(
                         text: isToMe
                             ? (isArabic ? 'أنت' : 'You')

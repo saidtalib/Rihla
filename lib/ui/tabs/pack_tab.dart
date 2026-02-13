@@ -193,17 +193,23 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
           ),
         ),
 
-        // ── Content area ────────────────────────
+        // ── Content area (card-based layout) ──────
         Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 250),
-            child: _showMembers
-                ? _buildMemberListStream(ar, cs, tt)
-                : SocialChatScreen(
-                    key: const ValueKey('social_chat'),
-                    trip: widget.trip,
-                    onTripUpdated: widget.onTripUpdated,
-                  ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Card(
+              clipBehavior: Clip.antiAlias,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: _showMembers
+                    ? _buildMemberListStream(ar, cs, tt)
+                    : SocialChatScreen(
+                        key: const ValueKey('social_chat'),
+                        trip: widget.trip,
+                        onTripUpdated: widget.onTripUpdated,
+                      ),
+              ),
+            ),
           ),
         ),
       ],
@@ -248,7 +254,7 @@ class _PackTabState extends State<PackTab> with AutomaticKeepAliveClientMixin {
 
     return ListView.builder(
       key: const ValueKey('members'),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(20),
       itemCount: memberIds.length,
       itemBuilder: (context, i) {
         final uid = memberIds[i];

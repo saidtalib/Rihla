@@ -181,99 +181,109 @@ class _AccountScreenState extends State<AccountScreen> {
         title: Text(ar ? 'الحساب' : 'Account'),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         children: [
-          Center(
-            child: GestureDetector(
-              onTap: _savingPhoto ? null : _changeAvatar,
-              child: Stack(
+          // Profile card: avatar, name, username, save
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+              child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 48,
-                    backgroundColor: cs.surfaceContainerHighest,
-                    backgroundImage: (_user?.photoURL != null &&
-                            _user!.photoURL!.isNotEmpty)
-                        ? NetworkImage(_user!.photoURL!)
-                        : null,
-                    child: (_user?.photoURL == null ||
-                            _user!.photoURL!.isEmpty)
-                        ? Icon(Icons.person_rounded,
-                            size: 40, color: cs.onSurfaceVariant)
-                        : null,
-                  ),
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: cs.primary,
-                        shape: BoxShape.circle,
+                  Center(
+                    child: GestureDetector(
+                      onTap: _savingPhoto ? null : _changeAvatar,
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 48,
+                            backgroundColor: cs.surfaceContainerHighest,
+                            backgroundImage: (_user?.photoURL != null &&
+                                    _user!.photoURL!.isNotEmpty)
+                                ? NetworkImage(_user!.photoURL!)
+                                : null,
+                            child: (_user?.photoURL == null ||
+                                    _user!.photoURL!.isEmpty)
+                                ? Icon(Icons.person_rounded,
+                                    size: 40, color: cs.onSurfaceVariant)
+                                : null,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: cs.primary,
+                                shape: BoxShape.circle,
+                              ),
+                              child: _savingPhoto
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.camera_alt_rounded,
+                                      size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ],
                       ),
-                      child: _savingPhoto
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _nameCtrl,
+                    decoration: InputDecoration(
+                      labelText: ar ? 'الاسم المعروض' : 'Display Name',
+                      prefixIcon: const Icon(Icons.badge_rounded, size: 20),
+                    ),
+                    textInputAction: TextInputAction.next,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _usernameCtrl,
+                    decoration: InputDecoration(
+                      labelText: ar ? 'اسم المستخدم' : 'Username',
+                      prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
+                      hintText: ar ? 'معرف فريد للدردشة' : 'Unique ID for chat',
+                    ),
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _saveProfile(),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _savingName ? null : _saveProfile,
+                      icon: _savingName
                           ? const SizedBox(
-                              width: 14,
-                              height: 14,
+                              width: 18,
+                              height: 18,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white),
                             )
-                          : const Icon(Icons.camera_alt_rounded,
-                              size: 14, color: Colors.white),
+                          : const Icon(Icons.check_rounded, size: 18),
+                      label: Text(ar ? 'حفظ الملف الشخصي' : 'Save Profile'),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _nameCtrl,
-            decoration: InputDecoration(
-              labelText: ar ? 'الاسم المعروض' : 'Display Name',
-              prefixIcon: const Icon(Icons.badge_rounded, size: 20),
-            ),
-            textInputAction: TextInputAction.next,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _usernameCtrl,
-            decoration: InputDecoration(
-              labelText: ar ? 'اسم المستخدم' : 'Username',
-              prefixIcon: const Icon(Icons.alternate_email_rounded, size: 20),
-              hintText: ar ? 'معرف فريد للدردشة' : 'Unique ID for chat',
-            ),
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => _saveProfile(),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _savingName ? null : _saveProfile,
-              icon: _savingName
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.check_rounded, size: 18),
-              label: Text(ar ? 'حفظ الملف الشخصي' : 'Save Profile'),
+          // Email (read-only) card
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListTile(
+              leading: Icon(Icons.email_rounded, color: R.textSecondary, size: 22),
+              title: Text(
+                _user?.email ?? '',
+                style: tt.bodyMedium?.copyWith(color: R.textSecondary),
+              ),
             ),
           ),
-          const SizedBox(height: 8),
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            leading: Icon(Icons.email_rounded,
-                color: cs.onSurface.withValues(alpha: 0.4), size: 20),
-            title: Text(
-              _user?.email ?? '',
-              style: tt.bodyMedium?.copyWith(
-                  color: cs.onSurface.withValues(alpha: 0.5)),
-            ),
-          ),
-          const SizedBox(height: 32),
+          // Delete account
           SizedBox(
             width: double.infinity,
             child: TextButton.icon(
@@ -293,6 +303,7 @@ class _AccountScreenState extends State<AccountScreen> {
               onPressed: _deleting ? null : _deleteAccount,
             ),
           ),
+          const SizedBox(height: 32),
         ],
       ),
     );
