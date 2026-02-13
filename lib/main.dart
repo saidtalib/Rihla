@@ -20,51 +20,51 @@ import 'ui/screens/settings_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 // ──────────────────────────────────────────────
-//  Entry point
+//  Entry point — run entire init + runApp in one zone to avoid zone mismatch.
 // ──────────────────────────────────────────────
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Capture Flutter framework errors
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    CrashLogService.instance.logError(
-      details.exception,
-      details.stack,
-    );
-  };
+    // Capture Flutter framework errors
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      CrashLogService.instance.logError(
+        details.exception,
+        details.stack,
+      );
+    };
 
-  // 1. Firebase Core
-  try {
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform);
-    debugPrint('[main] Firebase initialised ✓');
-  } catch (e) {
-    debugPrint('[main] Firebase init skipped: $e');
-    CrashLogService.instance.logError(e, StackTrace.current);
-  }
-
-  // 2. Load persisted settings
-  final settingsData = await AppSettingsData.load();
-
-  // 3. RevenueCat
-  try {
-    await PaymentService.instance.init();
-  } catch (e) {
-    debugPrint('[main] RevenueCat init skipped: $e');
-  }
-
-  // 4. AdMob
-  if (!kIsWeb) {
+    // 1. Firebase Core
     try {
-      await MonetizationManager.instance.init();
-      MonetizationManager.instance.loadInterstitial();
+      await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform);
+      debugPrint('[main] Firebase initialised ✓');
     } catch (e) {
-      debugPrint('[main] AdMob init skipped: $e');
+      debugPrint('[main] Firebase init skipped: $e');
+      CrashLogService.instance.logError(e, StackTrace.current);
     }
-  }
 
-  runZonedGuarded(() {
+    // 2. Load persisted settings
+    final settingsData = await AppSettingsData.load();
+
+    // 3. RevenueCat
+    try {
+      await PaymentService.instance.init();
+    } catch (e) {
+      debugPrint('[main] RevenueCat init skipped: $e');
+    }
+
+    // 4. AdMob
+    if (!kIsWeb) {
+      try {
+        await MonetizationManager.instance.init();
+        MonetizationManager.instance.loadInterstitial();
+      } catch (e) {
+        debugPrint('[main] AdMob init skipped: $e');
+      }
+    }
+
     runApp(RihlaApp(settingsData: settingsData));
   }, (error, stackTrace) {
     CrashLogService.instance.logError(error, stackTrace);
@@ -136,7 +136,15 @@ class _PermissionGateState extends State<_PermissionGate> {
     super.didChangeDependencies();
     if (!_started) {
       _started = true;
-      _checkPermissions();
+      // Timeout so we never hang on a blank screen (e.g. if Geolocator blocks on iOS)
+      _checkPermissions().then((_) {}).catchError((_) {
+        if (mounted) setState(() => _checked = true);
+      });
+      Future.delayed(const Duration(seconds: 6), () {
+        if (mounted && !_checked) {
+          setState(() => _checked = true);
+        }
+      });
     }
   }
 
@@ -230,8 +238,25 @@ class _PermissionGateState extends State<_PermissionGate> {
   @override
   Widget build(BuildContext context) {
     if (!_checked) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      final cs = Theme.of(context).colorScheme;
+      return Scaffold(
+        backgroundColor: cs.surface,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: cs.primary),
+              const SizedBox(height: 16),
+              Text(
+                'Loading…',
+                style: TextStyle(
+                  color: cs.onSurface,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
       );
     }
     return const _AuthGate();
@@ -239,20 +264,59 @@ class _PermissionGateState extends State<_PermissionGate> {
 }
 
 // ──────────────────────────────────────────────
-//  Auth Gate — routes based on auth state
+//  Auth Gate — routes based on auth state (with timeout so we never hang blank)
 // ──────────────────────────────────────────────
-class _AuthGate extends StatelessWidget {
+class _AuthGate extends StatefulWidget {
   const _AuthGate();
+
+  @override
+  State<_AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<_AuthGate> {
+  bool _timedOut = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // If Firebase auth state doesn't emit within 10s, show login so screen isn't blank
+    Future.delayed(const Duration(seconds: 10), () {
+      if (mounted && !_timedOut) {
+        setState(() => _timedOut = true);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: AuthService.instance.authStateChanges,
       builder: (context, snap) {
-        // Loading
+        // If we've been waiting too long, show login so screen isn't blank
+        if (snap.connectionState == ConnectionState.waiting && _timedOut) {
+          return const LoginScreen();
+        }
+        // Loading — use visible colors so screen is never blank
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+          final cs = Theme.of(context).colorScheme;
+          return Scaffold(
+            backgroundColor: cs.surface,
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: cs.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading…',
+                    style: TextStyle(
+                      color: cs.onSurface,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 

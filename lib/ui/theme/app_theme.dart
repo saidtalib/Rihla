@@ -31,6 +31,10 @@ class R {
   static const Color surfaceDark = Color(0xFF111827);
   static const Color cardDark = Color(0xFF1F2937);
 
+  // Text (primary = main content, secondary = muted)
+  static const Color textPrimary = Color(0xFF0F172A);   // slate900
+  static const Color textSecondary = Color(0xFF64748B); // slate500
+
   // Semantic
   static const Color success = Color(0xFF10B981);
   static const Color error = Color(0xFFEF4444);
