@@ -192,6 +192,46 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                       hintMaxLines: 6,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  // ── Hints for better AI results ──────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: (dark ? RihlaColors.darkCard : RihlaColors.saharaSand)
+                          .withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(R.radiusMd),
+                      border: Border.all(
+                        color: labelColor.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ar ? 'نصائح لنتائج أفضل' : 'Tips for better results',
+                          style: TextStyle(
+                            fontFamily: fontFamily,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: labelColor.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          ar
+                              ? '• كن مفصّلاً قدر الإمكان: اذكر تاريخ البدء والانتهاء إن أمكن (مثلاً 15–22 مارس).\n• اذكر المدن والأماكن التي تريد زيارتها.\n• حدّد إن كنت تحتاج اقتراحات نقل محددة (طيران، قطار، تأجير سيارة).'
+                              : '• Be as detailed as possible: include start and end dates if you can (e.g. March 15–22).\n• Mention cities and places you want to see.\n• Say if you need specific transport suggestions (flights, trains, car rental).',
+                          style: TextStyle(
+                            fontFamily: fontFamily,
+                            fontSize: 12,
+                            height: 1.35,
+                            color: labelColor.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 20),
 
                   // ── Generate button ──────────

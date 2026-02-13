@@ -90,9 +90,17 @@ class TripService {
     List<String> itinerary = const [],
     List<TripLocation> locations = const [],
     List<String> transportSuggestions = const [],
+    DateTime? startDate,
+    DateTime? endDate,
+    List<DayAgenda> dailyAgenda = const [],
   }) async {
     final code = _generateJoinCode();
     final now = DateTime.now();
+
+    String? formatDate(DateTime? d) =>
+        d != null
+            ? '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}'
+            : null;
 
     // Build the plain Map ourselves — no FieldValue.serverTimestamp()
     // so the write works instantly even without server connectivity.
@@ -104,6 +112,9 @@ class TripService {
       'itinerary': itinerary,
       'locations': locations.map((l) => l.toMap()).toList(),
       'transport_suggestions': transportSuggestions,
+      if (startDate != null) 'start_date': formatDate(startDate),
+      if (endDate != null) 'end_date': formatDate(endDate),
+      'daily_agenda': dailyAgenda.map((e) => e.toMap()).toList(),
       'members': {_uid: 'admin'},
       'is_public': false,
       'paid_members': [_uid],
@@ -131,6 +142,9 @@ class TripService {
         itinerary: itinerary,
         locations: locations,
         transportSuggestions: transportSuggestions,
+        startDate: startDate,
+        endDate: endDate,
+        dailyAgenda: dailyAgenda,
         members: {_uid: 'admin'},
         isPublic: false,
         paidMembers: [_uid],
@@ -152,6 +166,29 @@ class TripService {
     debugPrint('[TripService]   locations: ${result.locations.length}');
     debugPrint('[TripService]   transport: ${result.transportSuggestions.length}');
     debugPrint('[TripService]   itinerary: ${result.dailyItinerary.length}');
+    debugPrint('[TripService]   dailyAgenda: ${result.dailyAgenda.length}');
+
+    DateTime? parseDate(String? s) => s != null && s.isNotEmpty ? DateTime.tryParse(s) : null;
+
+    final startDate = parseDate(result.tripStartDate);
+    final endDate = parseDate(result.tripEndDate);
+
+    final dailyAgenda = result.dailyAgenda
+        .map((a) => DayAgenda(
+              dayIndex: a.dayIndex,
+              date: a.date,
+              city: a.city,
+              pois: a.pois
+                  .map((p) => PoiItem(
+                        name: p.name,
+                        description: p.description,
+                        lat: p.lat,
+                        lng: p.lng,
+                        searchQuery: p.searchQuery,
+                      ))
+                  .toList(),
+            ))
+        .toList();
 
     return createTrip(
       title: result.tripTitle,
@@ -167,6 +204,9 @@ class TripService {
               ))
           .toList(),
       transportSuggestions: result.transportSuggestions,
+      startDate: startDate,
+      endDate: endDate,
+      dailyAgenda: dailyAgenda,
     );
   }
 

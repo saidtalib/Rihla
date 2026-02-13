@@ -58,11 +58,14 @@ dependencies:
   open_filex: ^4.5.0
 
   # Audio recording & playback
-  record: ^5.1.0
+  record: ^6.2.0
   audioplayers: ^6.1.0
 
   # Image processing (avatar markers)
   image: ^4.5.0
+
+  # Calendar for itinerary
+  table_calendar: ^3.1.2
 
 dev_dependencies:
   flutter_test:

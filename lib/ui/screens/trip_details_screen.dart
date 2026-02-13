@@ -8,6 +8,7 @@ import '../../models/trip.dart';
 import '../../services/trip_service.dart';
 import '../../ui/theme/app_theme.dart';
 import '../tabs/home_tab.dart';
+import '../tabs/itinerary_tab.dart';
 import '../tabs/map_tab.dart';
 import '../tabs/pack_tab.dart';
 import '../tabs/vault_tab.dart';
@@ -33,7 +34,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
   void initState() {
     super.initState();
     _trip = widget.trip;
-    _tabCtrl = TabController(length: 5, vsync: this);
+    _tabCtrl = TabController(length: 6, vsync: this);
     // Cache the stream so it doesn't re-subscribe on every rebuild
     _tripStream = TripService.instance.tripStream(_trip.id);
   }
@@ -194,7 +195,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           // Only call setState via _onTripUpdated if the title actually changed
           final incoming = snap.data!;
           if (incoming.title != _trip.title ||
-              incoming.locations.length != _trip.locations.length) {
+              incoming.locations.length != _trip.locations.length ||
+              incoming.dailyAgenda.length != _trip.dailyAgenda.length) {
             // Schedule a microtask to avoid setState during build
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _onTripUpdated(incoming);
@@ -240,6 +242,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
                   text: ar ? 'الرئيسية' : 'Home',
                 ),
                 Tab(
+                  icon: const Icon(Icons.calendar_month_rounded, size: 20),
+                  text: ar ? 'الجدول' : 'Itinerary',
+                ),
+                Tab(
                   icon: const Icon(Icons.map_rounded, size: 20),
                   text: ar ? 'الخريطة' : 'Map',
                 ),
@@ -264,6 +270,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
             physics: const NeverScrollableScrollPhysics(),
             children: [
               HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
+              ItineraryTab(trip: _trip),
               MapTab(trip: _trip),
               PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
               KittyScreen(trip: _trip, onTripUpdated: _onTripUpdated),
