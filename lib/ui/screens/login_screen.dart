@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/app_settings.dart';
 import '../../services/auth_service.dart';
 import '../../ui/theme/app_theme.dart';
+import '../../ui/widgets/rihla_logo.dart';
 import 'login_background.dart';
 
 /// High-end login screen — Wanderlog-inspired.
@@ -210,50 +211,18 @@ class _LoginScreenState extends State<LoginScreen> {
 
             // ── Main scrollable content ──────────────
             Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 400),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // ── Logo ──────────────────────
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: cs.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Center(
-                            child: Icon(Icons.flight_takeoff_rounded,
-                                size: 40, color: cs.primary),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Rihla',
-                          style: GoogleFonts.inter(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSurface,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          ar
-                              ? 'خطط رحلتك مع أصدقائك'
-                              : 'Plan trips with your crew',
-                          style: tt.bodyLarge?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.5),
-                          ),
-                        ),
-                        const SizedBox(height: 48),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(28, 24, 28, 16),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: [
+                      // ── Bilingual logo (top of white section) ──
+                      Center(child: RihlaLogo()),
+                      const SizedBox(height: 48),
 
-                        if (!_showEmailForm) ...[
+                      if (!_showEmailForm) ...[
                           // ── Google button (high-contrast) ──
                           _GoogleSignInButton(
                             label: ar
@@ -513,13 +482,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-        ],
-      ),
-    );
+      ],
+    ),
+  );
   }
 }
 
