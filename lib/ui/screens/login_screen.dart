@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../core/app_settings.dart';
 import '../../services/auth_service.dart';
 import '../../ui/theme/app_theme.dart';
+import '../widgets/rihla_logo.dart';
 
 /// High-end login screen — Wanderlog-inspired.
 class LoginScreen extends StatefulWidget {
@@ -212,36 +213,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // ── Logo ──────────────────────
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: cs.primary.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: Center(
-                            child: Icon(Icons.flight_takeoff_rounded,
-                                size: 40, color: cs.primary),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          'Rihla',
-                          style: GoogleFonts.inter(
-                            fontSize: 34,
-                            fontWeight: FontWeight.w800,
-                            color: cs.onSurface,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          ar
-                              ? 'خطط رحلتك مع أصدقائك'
-                              : 'Plan trips with your crew',
-                          style: tt.bodyLarge?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.5),
+                        // ── Bilingual Logo (centered at top of white section) ──
+                        Center(
+                          child: RihlaLogo(
+                            tagline: ar
+                                ? 'خطط رحلتك مع أصدقائك'
+                                : 'Plan trips with your crew',
                           ),
                         ),
                         const SizedBox(height: 48),
