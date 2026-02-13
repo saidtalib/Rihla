@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_settings.dart';
+import '../../services/crash_log_service.dart';
 import '../../ui/theme/app_theme.dart';
 
 enum SupportCategory { bug, featureRequest, general }
@@ -108,6 +111,67 @@ class _SupportScreenState extends State<SupportScreen> {
     }
   }
 
+  Future<void> _exportLogs() async {
+    final ar = AppSettings.of(context).isArabic;
+    try {
+      final content = await CrashLogService.instance.getLogContent();
+      if (content.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(ar ? 'لا توجد سجلات بعد' : 'No logs yet'),
+              backgroundColor: R.warning,
+            ),
+          );
+        }
+        return;
+      }
+      await Share.share(
+        content,
+        subject: ar ? 'سجلات تطبيق Rihla' : 'Rihla app logs',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: R.error),
+        );
+      }
+    }
+  }
+
+  Future<void> _copyLogs() async {
+    final ar = AppSettings.of(context).isArabic;
+    try {
+      final content = await CrashLogService.instance.getLogContent();
+      if (content.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(ar ? 'لا توجد سجلات بعد' : 'No logs yet'),
+              backgroundColor: R.warning,
+            ),
+          );
+        }
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: content));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ar ? 'تم نسخ السجلات' : 'Logs copied to clipboard'),
+            backgroundColor: R.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: R.error),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ar = AppSettings.of(context).isArabic;
@@ -119,6 +183,50 @@ class _SupportScreenState extends State<SupportScreen> {
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.bug_report_rounded, color: R.warning),
+                      const SizedBox(width: 8),
+                      Text(
+                        ar ? 'سجلات التطبيق (للمساعدة في الأخطاء)' : 'App logs (for crash reports)',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    ar
+                        ? 'إذا تعطل التطبيق، استخدم هذا لإرسال السجلات للمطور.'
+                        : 'If the app crashes, use this to send logs to the developer.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: _copyLogs,
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        label: Text(ar ? 'نسخ' : 'Copy'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        onPressed: _exportLogs,
+                        icon: const Icon(Icons.share_rounded, size: 18),
+                        label: Text(ar ? 'مشاركة السجلات' : 'Share logs'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           TextField(
             controller: _subjectCtrl,
             decoration: InputDecoration(

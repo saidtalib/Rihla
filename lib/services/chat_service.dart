@@ -4,7 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 /// Type of chat message content.
-enum MessageType { text, image, pdf }
+enum MessageType { text, image, pdf, audio, location, contact }
 
 /// A single chat message in a trip's conversation.
 class ChatMessage {
@@ -32,6 +32,9 @@ class ChatMessage {
 
   bool get isPhoto => type == MessageType.image;
   bool get isPdf => type == MessageType.pdf;
+  bool get isAudio => type == MessageType.audio;
+  bool get isLocation => type == MessageType.location;
+  bool get isContact => type == MessageType.contact;
   bool get hasFile => fileUrl != null && fileUrl!.isNotEmpty;
 
   // Backward-compatible: old messages stored image in 'image_url'
@@ -39,13 +42,28 @@ class ChatMessage {
     final d = doc.data()! as Map<String, dynamic>;
     final rawType = d['type'] as String?;
     MessageType type;
-    if (rawType == 'pdf') {
-      type = MessageType.pdf;
-    } else if (rawType == 'image' ||
-        (d['image_url'] != null && (d['image_url'] as String).isNotEmpty)) {
-      type = MessageType.image;
-    } else {
-      type = MessageType.text;
+    switch (rawType) {
+      case 'pdf':
+        type = MessageType.pdf;
+        break;
+      case 'audio':
+        type = MessageType.audio;
+        break;
+      case 'location':
+        type = MessageType.location;
+        break;
+      case 'contact':
+        type = MessageType.contact;
+        break;
+      case 'image':
+        type = MessageType.image;
+        break;
+      default:
+        if (d['image_url'] != null && (d['image_url'] as String).isNotEmpty) {
+          type = MessageType.image;
+        } else {
+          type = MessageType.text;
+        }
     }
 
     return ChatMessage(
@@ -180,6 +198,68 @@ class ChatService {
       debugPrint('ChatService.sendPdf error: $e');
       rethrow;
     }
+  }
+
+  // ── Send audio (recorded) ────────────────────
+  Future<void> sendAudio(
+      String tripId, Uint8List bytes, String fileName) async {
+    try {
+      final safeName =
+          '${DateTime.now().millisecondsSinceEpoch}_${_uid}_$fileName';
+      final url = await _uploadBytes(tripId, bytes, safeName);
+
+      final msg = ChatMessage(
+        id: '',
+        senderId: _uid,
+        senderName: _displayName,
+        senderPhotoUrl: _photoUrl,
+        text: '',
+        fileUrl: url,
+        fileName: fileName,
+        type: MessageType.audio,
+        timestamp: DateTime.now(),
+      );
+      await _messages(tripId).add(msg.toFirestore());
+    } catch (e) {
+      debugPrint('ChatService.sendAudio error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Send location (lat, lng, label) ──────────
+  Future<void> sendLocation(
+      String tripId, double lat, double lng, String label) async {
+    final mapsUrl =
+        'https://www.google.com/maps?q=$lat,$lng';
+    final msg = ChatMessage(
+      id: '',
+      senderId: _uid,
+      senderName: _displayName,
+      senderPhotoUrl: _photoUrl,
+      text: label.isEmpty ? '$lat,$lng' : label,
+      fileUrl: mapsUrl,
+      fileName: null,
+      type: MessageType.location,
+      timestamp: DateTime.now(),
+    );
+    await _messages(tripId).add(msg.toFirestore());
+  }
+
+  // ── Send contact (name + phone) ────────────
+  Future<void> sendContact(
+      String tripId, String name, String phoneOrEmail) async {
+    final msg = ChatMessage(
+      id: '',
+      senderId: _uid,
+      senderName: _displayName,
+      senderPhotoUrl: _photoUrl,
+      text: name,
+      fileUrl: null,
+      fileName: phoneOrEmail,
+      type: MessageType.contact,
+      timestamp: DateTime.now(),
+    );
+    await _messages(tripId).add(msg.toFirestore());
   }
 
   // ── Vault sync helper ──────────────────────

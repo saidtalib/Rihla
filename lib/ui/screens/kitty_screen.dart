@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_settings.dart';
@@ -437,6 +438,21 @@ class _KittyScreenState extends State<KittyScreen>
                       ),
                     ),
 
+                    // ── Pie chart: expenses by category ──
+                    if (allExpenses.isNotEmpty)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          child: _ExpensesPieChart(
+                            expenses: allExpenses,
+                            baseCurrency: _baseCurrency,
+                            isArabic: ar,
+                            cs: cs,
+                            tt: tt,
+                          ),
+                        ),
+                      ),
+
                     if (expenses.isEmpty)
                       SliverToBoxAdapter(
                         child: Padding(
@@ -512,6 +528,155 @@ class _KittyScreenState extends State<KittyScreen>
           },
         );
       },
+    );
+  }
+}
+
+// ═════════════════════════════════════════════════
+//  Expenses by category – Pie chart
+// ═════════════════════════════════════════════════
+class _ExpensesPieChart extends StatelessWidget {
+  const _ExpensesPieChart({
+    required this.expenses,
+    required this.baseCurrency,
+    required this.isArabic,
+    required this.cs,
+    required this.tt,
+  });
+
+  final List<Expense> expenses;
+  final String baseCurrency;
+  final bool isArabic;
+  final ColorScheme cs;
+  final TextTheme tt;
+
+  static const _chartColors = [
+    Color(0xFF4CAF50),
+    Color(0xFF2196F3),
+    Color(0xFFFF9800),
+    Color(0xFF9C27B0),
+    Color(0xFFE91E63),
+    Color(0xFF00BCD4),
+    Color(0xFF795548),
+    Color(0xFF607D8B),
+    Color(0xFF8BC34A),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final byCategory = <String, double>{};
+    for (final e in expenses) {
+      byCategory[e.category] = (byCategory[e.category] ?? 0) + e.amountInBase;
+    }
+    final total = byCategory.values.fold<double>(0.0, (a, b) => a + b);
+    if (total <= 0) return const SizedBox.shrink();
+
+    final sections = <PieChartSectionData>[];
+    int i = 0;
+    final entries = byCategory.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    for (final entry in entries) {
+      final value = entry.value;
+      final pct = (value / total * 100).toStringAsFixed(0);
+      sections.add(
+        PieChartSectionData(
+          value: value,
+          title: '$pct%',
+          color: _chartColors[i % _chartColors.length],
+          radius: 48,
+          titleStyle: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+      );
+      i++;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(R.radiusXl),
+        border: Border.all(color: cs.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isArabic ? 'المصاريف حسب الفئة' : 'Expenses by Category',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 180,
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: PieChart(
+                    PieChartData(
+                      sections: sections,
+                      sectionsSpace: 2,
+                      centerSpaceRadius: 32,
+                    ),
+                    duration: const Duration(milliseconds: 300),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: entries.length,
+                    itemBuilder: (context, j) {
+                      final entry = entries[j];
+                      final cat = categoryByKey(entry.key);
+                      final value = entry.value;
+                      final pct = value / total * 100;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: _chartColors[j % _chartColors.length],
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${cat.emoji} ${isArabic ? cat.labelAr : cat.labelEn}',
+                                style: tt.bodySmall?.copyWith(
+                                  fontSize: 12,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${value.toStringAsFixed(1)} $baseCurrency (${pct.toStringAsFixed(0)}%)',
+                              style: tt.bodySmall?.copyWith(
+                                fontSize: 11,
+                                color: cs.onSurface.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

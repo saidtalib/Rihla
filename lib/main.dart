@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -9,6 +11,7 @@ import 'firebase_options.dart';
 import 'core/app_settings.dart';
 import 'core/monetization_manager.dart';
 import 'services/auth_service.dart';
+import 'services/crash_log_service.dart';
 import 'services/payment_service.dart';
 import 'ui/screens/confirm_profile_screen.dart';
 import 'ui/screens/home_screen.dart';
@@ -22,6 +25,15 @@ import 'ui/theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Capture Flutter framework errors
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    CrashLogService.instance.logError(
+      details.exception,
+      details.stack,
+    );
+  };
+
   // 1. Firebase Core
   try {
     await Firebase.initializeApp(
@@ -29,6 +41,7 @@ Future<void> main() async {
     debugPrint('[main] Firebase initialised ✓');
   } catch (e) {
     debugPrint('[main] Firebase init skipped: $e');
+    CrashLogService.instance.logError(e, StackTrace.current);
   }
 
   // 2. Load persisted settings
@@ -51,7 +64,11 @@ Future<void> main() async {
     }
   }
 
-  runApp(RihlaApp(settingsData: settingsData));
+  runZonedGuarded(() {
+    runApp(RihlaApp(settingsData: settingsData));
+  }, (error, stackTrace) {
+    CrashLogService.instance.logError(error, stackTrace);
+  });
 }
 
 // ──────────────────────────────────────────────

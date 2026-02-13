@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_settings.dart';
@@ -46,6 +48,10 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
   TripLocation? _selectedLocation;
   int? _selectedIndex;
 
+  // Live member avatar icons (uid -> descriptor); fallback to colored pin
+  final Map<String, BitmapDescriptor> _avatarIcons = {};
+  final Set<String> _loadingAvatars = {};
+
   @override
   bool get wantKeepAlive => true;
 
@@ -55,8 +61,39 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
     _liveLocationsSub = LiveLocationService.instance
         .streamLiveLocations(widget.trip.id)
         .listen((list) {
-      if (mounted) setState(() => _liveEntries = list);
+      if (mounted) {
+        setState(() => _liveEntries = list);
+        _loadAvatarsForEntries(list);
+      }
     });
+  }
+
+  /// Load avatar image from [entry.photoUrl], resize, and set _avatarIcons.
+  Future<void> _loadAvatarsForEntries(List<LiveLocationEntry> entries) async {
+    for (final entry in entries) {
+      final url = entry.photoUrl;
+      if (url == null || url.isEmpty) continue;
+      if (_avatarIcons.containsKey(entry.uid) || _loadingAvatars.contains(entry.uid)) continue;
+      _loadingAvatars.add(entry.uid);
+      try {
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode != 200 || !mounted) continue;
+        final decoded = img.decodeImage(response.bodyBytes);
+        if (decoded == null || !mounted) continue;
+        final resized = img.copyResize(decoded, width: 64, height: 64);
+        final pngBytes = img.encodePng(resized);
+        if (pngBytes.isEmpty || !mounted) continue;
+        final descriptor = BitmapDescriptor.bytes(pngBytes);
+        if (!mounted) continue;
+        setState(() {
+          _avatarIcons[entry.uid] = descriptor;
+        });
+      } catch (_) {
+        // Keep default pin on failure
+      } finally {
+        if (mounted) _loadingAvatars.remove(entry.uid);
+      }
+    }
   }
 
   @override
@@ -111,14 +148,16 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
     return hues[h % hues.length].toDouble();
   }
 
-  // ── Live Pack member markers (avatars: colored pin + name) ──
+  // ── Live Pack member markers (user avatar when available, else colored pin) ──
   Set<Marker> get _liveMemberMarkers {
     final set = <Marker>{};
     for (final entry in _liveEntries) {
+      final icon = _avatarIcons[entry.uid] ??
+          BitmapDescriptor.defaultMarkerWithHue(_hueFromUid(entry.uid));
       set.add(Marker(
         markerId: MarkerId('live_${entry.uid}'),
         position: LatLng(entry.lat, entry.lng),
-        icon: BitmapDescriptor.defaultMarkerWithHue(_hueFromUid(entry.uid)),
+        icon: icon,
         infoWindow: InfoWindow(
           title: entry.displayName.isNotEmpty ? entry.displayName : 'Pack',
           snippet: 'Live',
@@ -203,6 +242,18 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
         _selectedLocation = null;
         _selectedIndex = null;
       });
+
+  void _zoomIn() {
+    _mapController?.getZoomLevel().then((z) {
+      _mapController?.animateCamera(CameraUpdate.zoomTo(z + 1));
+    });
+  }
+
+  void _zoomOut() {
+    _mapController?.getZoomLevel().then((z) {
+      _mapController?.animateCamera(CameraUpdate.zoomTo((z - 1).clamp(2.0, 21.0)));
+    });
+  }
 
   // ── Navigate to Google Maps ─────────────────────
   Future<void> _openExternalMaps(TripLocation loc) async {
@@ -468,7 +519,7 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
           zoomGesturesEnabled: true,
           tiltGesturesEnabled: true,
           rotateGesturesEnabled: true,
-          zoomControlsEnabled: true,
+          zoomControlsEnabled: false,
           mapToolbarEnabled: true,
           compassEnabled: true,
           onMapCreated: (ctrl) {
@@ -510,6 +561,28 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
                 icon: Icons.zoom_out_map_rounded,
                 tooltip: ar ? 'عرض الكل' : 'Fit All',
                 onTap: _fitBounds,
+              ),
+            ],
+          ),
+        ),
+
+        // ── Zoom +/- buttons (above chips so they are visible) ──
+        Positioned(
+          bottom: _selectedLocation != null ? 130 + 80 : 80,
+          right: 12,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _MapFab(
+                icon: Icons.add_rounded,
+                tooltip: ar ? 'تكبير' : 'Zoom in',
+                onTap: _zoomIn,
+              ),
+              const SizedBox(height: 6),
+              _MapFab(
+                icon: Icons.remove_rounded,
+                tooltip: ar ? 'تصغير' : 'Zoom out',
+                onTap: _zoomOut,
               ),
             ],
           ),

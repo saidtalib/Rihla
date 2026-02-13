@@ -261,6 +261,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen>
           ),
           body: TabBarView(
             controller: _tabCtrl,
+            physics: const NeverScrollableScrollPhysics(),
             children: [
               HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
               MapTab(trip: _trip),
