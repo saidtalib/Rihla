@@ -146,4 +146,20 @@ All four **low-complexity** items from Section 7 have been implemented:
 | 3 | **User-facing error handling** | ✅ Done | Added `lib/core/error_toast.dart` (`ErrorToast.show()` for red SnackBars). MapTab now shows a SnackBar when "Share live location" fails to get position (instead of debug-only). Other screens already showed SnackBars on errors; this centralizes and extends coverage. |
 | 4 | **Firestore offline persistence** | ✅ Done | In `main.dart` after Firebase init: `FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true, cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED)`. Enables local cache for faster loads and offline resilience. |
 
-**Next (medium complexity):** Hyper-localized AI prompts, AI chat revisions, OCR expenses — ready for Donnie ↔ Cursor handoff when Donnie is back.
+**Next (medium complexity):** AI chat revisions (#6), OCR expenses (#7) — ready for Donnie ↔ Cursor handoff when Donnie is back.
+
+---
+
+## 9. Implementation Status (Medium-Complexity — In Progress)
+
+**Branch:** `feature/medium-complexity-phase1`  
+**Date:** February 15, 2026  
+**Implemented by:** Cursor
+
+| # | Item | Status | What was done |
+|---|------|--------|----------------|
+| 5 | **Hyper-localized AI prompts** | ✅ Done | In `lib/services/ai_service.dart`: added `_hyperLocalizedPromptSection(isArabic, lang)`. For **Arabic**: prompt instructs Gemini to prefer Halal-friendly options, prayer-time-aware itineraries (natural breaks aligned with prayer times), and optional mosque proximity; family-friendly tone. For **English**: Backpacker/Nomad vibe (adventurous, hostels, local markets). Section is appended to the main trip-generation prompt so all AI-generated plans respect locale. |
+| 6 | **AI chat revisions** (persistent AI Trip Assistant in ChatTab) | ✅ Done | **AiService:** Added `reviseTrip(currentTripSummary, userMessage, isArabic)` — sends current plan + user message to Gemini, returns revised full trip (same JSON schema). **TripService:** Added `updateFromAiResult(tripId, result)` — updates existing trip doc with revised title, itinerary, locations, transport, dates, daily_agenda. **ChatTab:** Segment "Chat" | "Trip Assistant". In Trip Assistant: trip summary card, chat-style list (user messages + AI replies with revised plan), "Apply to trip" button per AI reply, input "Ask for a change...". Multi-turn: each message revises the last plan (or current trip); Apply writes to Firestore. |
+| 7 | **OCR expenses** (receipt scan → auto-log, currency, split) | ✅ Done | **ReceiptScanService** (`lib/services/receipt_scan_service.dart`): ML Kit text recognition on receipt image; parses text for total amount (regex: total/المجموع/TOTAL + number), currency (SAR, USD, OMR, etc.), description (first line or "Receipt"). **Kitty add-expense sheet** (`lib/ui/screens/kitty_screen.dart`): "Scan receipt" button (mobile only, add mode). User taps → Camera or Gallery → ML Kit scan → pre-fills description, amount, currency; category from suggestCategory(description). Split defaults to all members; Save uses KittyService.addExpense; existing convert() and getBaseCurrency() handle conversion to trip base currency. |
+
+**Note to Donnie:** Cursor has implemented **all three medium-complexity items (#5, #6, #7)** on branch `feature/medium-complexity-phase1`. **#5:** Hyper-localized AI prompts. **#6:** Persistent AI Trip Assistant in ChatTab. **#7:** OCR expenses — "Scan receipt" in the add-expense sheet (mobile only): camera/gallery → ML Kit → pre-fill amount, currency, description; conversion to trip base currency and split among members use existing Kitty logic. Please pull the branch, run `flutter analyze` and your usual validation, and test: (1) #5 trip generation in Arabic/English, (2) #6 Trip Assistant → revise → Apply, (3) #7 Kitty → Add expense → Scan receipt → photo → Save.

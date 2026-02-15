@@ -20,6 +20,20 @@ This file serves as the primary handoff point between Donnie (VPS Assistant) and
 
 ---
 
+## 📋 Note to Donnie (from Cursor — Feb 15, 2026)
+
+**Branch:** `feature/medium-complexity-phase1`
+
+**Implemented:** Medium-complexity **#5, #6, and #7** (all three).
+
+- **#5 — Where:** `lib/services/ai_service.dart`. Helper `_hyperLocalizedPromptSection(isArabic, lang)`. Arabic: Halal-friendly, prayer-time-aware, mosque proximity. English: Backpacker/Nomad vibe.
+- **#6 — Where:** `ai_service.dart` (`reviseTrip`), `trip_service.dart` (`updateFromAiResult`), `chat_tab.dart` (Trip Assistant segment, chat list, Apply to trip).
+- **#7 — Where:** `lib/services/receipt_scan_service.dart` (ML Kit text recognition + parse amount/currency/description). `lib/ui/screens/kitty_screen.dart`: "Scan receipt" button in add-expense sheet (mobile only) → camera/gallery → pre-fill description, amount, currency, category; split = all members; Save uses existing KittyService.addExpense + convert to base currency.
+
+Please pull `feature/medium-complexity-phase1`, run tests/validation, and verify: #5 trip generation in both locales; #6 Trip Assistant → revise → Apply; #7 Kitty → Add expense → Scan receipt → photo → Save.
+
+---
+
 ## ✅ Archive (Completed)
 
 ### 1. Flutter SDK Environment [FIXED]

@@ -1,10 +1,13 @@
 import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/app_settings.dart';
 import '../../models/expense.dart';
 import '../../models/trip.dart';
 import '../../services/kitty_service.dart';
+import '../../services/receipt_scan_service.dart';
 import '../../services/trip_service.dart';
 import '../../ui/theme/app_theme.dart';
 
@@ -1269,6 +1272,7 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
   String _category = 'other';
   late Set<String> _splitAmong;
   bool _saving = false;
+  bool _scanning = false;
   TextDirection _descDirection = TextDirection.ltr;
 
   bool get _isEditing => widget.existingExpense != null;
@@ -1314,6 +1318,107 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
     final dir = _detectDirection(value);
     if (dir != _descDirection) {
       setState(() => _descDirection = dir);
+    }
+  }
+
+  /// Scan receipt with camera or gallery (mobile only); pre-fill description, amount, currency, category.
+  Future<void> _scanReceipt() async {
+    if (_scanning || _isEditing) return;
+    final ar = widget.isArabic;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_rounded),
+              title: Text(ar ? 'التقاط صورة' : 'Take photo'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: Text(ar ? 'اختيار من المعرض' : 'Choose from gallery'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    setState(() => _scanning = true);
+    try {
+      final picker = ImagePicker();
+      final xfile = await picker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        imageQuality: 85,
+      );
+      if (xfile == null || !mounted) {
+        setState(() => _scanning = false);
+        return;
+      }
+      final path = xfile.path;
+      if (path.isEmpty) {
+        if (mounted) {
+          setState(() => _scanning = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(ar ? 'لم يتم العثور على صورة' : 'No image path'),
+              backgroundColor: R.error,
+            ),
+          );
+        }
+        return;
+      }
+
+      final result = await ReceiptScanService.instance.scanFromFile(path);
+      if (!mounted) return;
+      setState(() => _scanning = false);
+
+      if (result.rawText.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ar ? 'لم يتم التعرف على نص. جرّب صورة أوضح.' : 'No text recognized. Try a clearer image.'),
+            backgroundColor: R.error,
+          ),
+        );
+        return;
+      }
+
+      _descCtrl.text = result.description ?? 'Receipt';
+      _onDescriptionChanged(_descCtrl.text);
+      if (result.hasAmount) {
+        _amountCtrl.text = result.amount!.toStringAsFixed(2);
+      }
+      if (result.hasCurrency) {
+        _currency = result.currency!;
+      } else {
+        _currency = widget.baseCurrency;
+      }
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.hasAmount
+                ? (ar ? 'تم تعبئة المبلغ والعملة من الإيصال' : 'Amount and currency filled from receipt')
+                : (ar ? 'تم تعبئة الوصف. أدخل المبلغ يدويًا.' : 'Description filled. Enter amount manually.'),
+          ),
+          backgroundColor: R.success,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _scanning = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ar ? 'فشل المسح: $e' : 'Scan failed: $e'),
+            backgroundColor: R.error,
+          ),
+        );
+      }
     }
   }
 
@@ -1427,6 +1532,30 @@ class _ExpenseSheetState extends State<_ExpenseSheet> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
+
+            // ── Scan receipt (add mode, mobile only) ──
+            if (!_isEditing && !kIsWeb)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: OutlinedButton.icon(
+                  onPressed: _scanning ? null : _scanReceipt,
+                  icon: _scanning
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.document_scanner_rounded),
+                  label: Text(
+                    _scanning
+                        ? (ar ? 'جاري المسح...' : 'Scanning...')
+                        : (ar ? 'مسح إيصال' : 'Scan receipt'),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: cs.primary,
+                  ),
+                ),
+              ),
 
             // ── Description (smart search + Arabic detection) ──
             TextField(

@@ -67,6 +67,9 @@ dependencies:
   # Image processing (avatar markers)
   image: ^4.5.0
 
+  # Receipt OCR (ML Kit)
+  google_mlkit_text_recognition: ^0.14.0
+
   # Calendar for itinerary
   table_calendar: ^3.1.2
 

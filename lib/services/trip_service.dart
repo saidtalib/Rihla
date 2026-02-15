@@ -210,6 +210,59 @@ class TripService {
     );
   }
 
+  /// Update an existing trip with a revised [AiTripResult] (e.g. from Trip Assistant in ChatTab).
+  /// Only updates plan fields: title, itinerary, locations, transport_suggestions, dates, daily_agenda.
+  Future<void> updateFromAiResult(String tripId, AiTripResult result) async {
+    DateTime? parseDate(String? s) =>
+        s != null && s.isNotEmpty ? DateTime.tryParse(s) : null;
+
+    final startDate = parseDate(result.tripStartDate);
+    final endDate = parseDate(result.tripEndDate);
+
+    final dailyAgenda = result.dailyAgenda
+        .map((a) => DayAgenda(
+              dayIndex: a.dayIndex,
+              date: a.date,
+              city: a.city,
+              pois: a.pois
+                  .map((p) => PoiItem(
+                        name: p.name,
+                        description: p.description,
+                        lat: p.lat,
+                        lng: p.lng,
+                        searchQuery: p.searchQuery,
+                      ))
+                  .toList(),
+            ))
+        .toList();
+
+    final data = <String, dynamic>{
+      'title': result.tripTitle,
+      'itinerary': result.dailyItinerary,
+      'locations': result.locations
+          .map((l) => {
+                'name': l.name,
+                'lat': l.lat,
+                'lng': l.lng,
+                'transport_type': l.transportType,
+                'is_overnight': l.isOvernight,
+              })
+          .toList(),
+      'transport_suggestions': result.transportSuggestions,
+      'daily_agenda': dailyAgenda.map((e) => e.toMap()).toList(),
+    };
+    if (startDate != null) {
+      data['start_date'] =
+          '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+    }
+    if (endDate != null) {
+      data['end_date'] =
+          '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+    }
+
+    await _trips.doc(tripId).update(data).timeout(const Duration(seconds: 10));
+  }
+
   // ── Read by ID ──────────────────────────────
   Future<Trip?> getTrip(String tripId) async {
     final snap = await _trips.doc(tripId).get().timeout(const Duration(seconds: 10));

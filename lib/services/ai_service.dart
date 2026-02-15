@@ -182,6 +182,24 @@ class AiService {
     return _modelCache!;
   }
 
+  /// Returns prompt section for hyper-localized behavior (Arabic: Halal, prayer-aware; English: backpacker vibe).
+  static String _hyperLocalizedPromptSection({
+    required bool isArabic,
+    required String lang,
+  }) {
+    if (isArabic) {
+      return '''
+Hyper-localization for Arabic / Muslim travelers (apply to daily_itinerary, daily_agenda, and POI descriptions):
+- Prefer Halal-friendly restaurants and food options; mention "حلال" or "Halal-friendly" where relevant in descriptions.
+- Make the itinerary prayer-time-aware: suggest natural breaks (e.g. mid-morning, noon, mid-afternoon, sunset, evening) that align with prayer times so the user can pray without rushing. Optionally mention "قرب مسجد" (near mosque) or a notable mosque for key stops where it makes sense.
+- Keep a respectful, family-friendly tone. All output text in $lang.
+''';
+    }
+    return '''
+Tone for $lang: Keep a Backpacker/Nomad vibe—adventurous, practical, and social. Suggest hostels, local markets, and experiences that connect travelers with place and people.
+''';
+  }
+
   /// Takes any user input and extracts a structured trip plan.
   Future<AiTripResult> generateTrip({
     required String userInput,
@@ -234,6 +252,8 @@ Rules:
 - If the user is vague, infer 3-5 days and popular activities. Make it practical and include local gems.
 - All text values must be in $lang (but keep URLs and search_query in English for best photo results).
 ${isArabic ? '- Use Arabic for trip_title, daily_itinerary, descriptions, and city names; keep search_query in English.' : ''}
+
+${_hyperLocalizedPromptSection(isArabic: isArabic, lang: lang)}
 ''';
 
     try {
@@ -254,6 +274,76 @@ ${isArabic ? '- Use Arabic for trip_title, daily_itinerary, descriptions, and ci
       return AiTripResult.fromJson(json);
     } catch (e) {
       debugPrint('AiService.generateTrip error: $e');
+      rethrow;
+    }
+  }
+
+  /// Revise an existing trip plan based on user feedback (e.g. "make it cheaper", "add more hiking").
+  /// [currentTripSummary] is a text description of the current trip (title, dates, itinerary, locations).
+  /// Returns a revised full trip in the same JSON schema.
+  Future<AiTripResult> reviseTrip({
+    required String currentTripSummary,
+    required String userMessage,
+    bool isArabic = false,
+  }) async {
+    if (_apiKey.trim().isEmpty) {
+      throw Exception(
+        isArabic ? 'مفتاح API غير مضبوط. أضف GEMINI_API_KEY في assets/env.default'
+            : 'API key not configured. Add GEMINI_API_KEY in assets/env.default',
+      );
+    }
+
+    final lang = isArabic ? 'Arabic' : 'English';
+
+    final prompt = '''
+You are Rihla, a fun and adventurous AI travel planner.
+
+The user already has this trip plan:
+
+$currentTripSummary
+
+They now say: "$userMessage"
+
+Revise the trip according to their request. Respond ONLY with valid JSON (no markdown, no backticks) in this exact schema:
+
+{
+  "trip_title": "Revised title in $lang",
+  "trip_start_date": "YYYY-MM-DD",
+  "trip_end_date": "YYYY-MM-DD",
+  "locations": [
+    {"name": "Place name", "lat": 13.7563, "lng": 100.5018, "transport_type": "flight", "is_overnight": true}
+  ],
+  "transportation_suggestions": ["...with Google Search/Travel links where relevant"],
+  "daily_itinerary": ["Day 1: ...", "Day 2: ..."],
+  "daily_agenda": [
+    {"day_index": 1, "date": "YYYY-MM-DD", "city": "City", "pois": [{"name": "...", "description": "...", "search_query": "..."}]}
+  ]
+}
+
+Rules:
+- Apply the user's requested changes (e.g. cheaper options, more hiking, different dates) while keeping the same schema.
+- Keep real GPS coordinates for locations. Keep search_query in English for POIs.
+- All narrative text in $lang.
+${_hyperLocalizedPromptSection(isArabic: isArabic, lang: lang)}
+''';
+
+    try {
+      final response = await _model.generateContent([Content.text(prompt)]);
+      final text = response.text;
+      if (text == null || text.isEmpty) {
+        throw Exception('Empty response from Gemini');
+      }
+
+      var cleaned = text.trim();
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned.replaceFirst(RegExp(r'^```(?:json)?\s*'), '');
+        cleaned = cleaned.replaceFirst(RegExp(r'\s*```$'), '');
+      }
+
+      final json = jsonDecode(cleaned) as Map<String, dynamic>;
+      return AiTripResult.fromJson(json);
+    } catch (e) {
+      debugPrint('AiService.reviseTrip error: $e');
       rethrow;
     }
   }
