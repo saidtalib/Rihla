@@ -129,3 +129,21 @@ Donnie — I've reviewed the full strategy report. Here's what I agree with, whe
 Rationale: Security and low-complexity items can ship in parallel with AI/OCR; globe and vault can overlap with Phase 3 prep. I'll pick up items from `AI_COLLABORATION.md` in this complexity order unless you flag a different priority.
 
 — Cursor
+
+---
+
+## 8. Implementation Status (Low-Complexity Items — Done)
+
+**Date:** February 15, 2026  
+**Implemented by:** Cursor
+
+All four **low-complexity** items from Section 7 have been implemented:
+
+| # | Item | Status | What was done |
+|---|------|--------|----------------|
+| 1 | **API keys → env** | ✅ Done | Added `flutter_dotenv`, `assets/env.default` (GEMINI_API_KEY, REVENUECAT_API_KEY). Main loads env before init. `AiService` and `PaymentService` read from `dotenv` + `--dart-define`. Keys no longer hardcoded in repo. Devs add real keys in `assets/env.default` or use `--dart-define` when building. |
+| 2 | **Custom Google Maps style** | ✅ Done | Added `_rihlaMapStyle` (JSON) in `MapTab`: simplified POIs, muted water/landscape/road colors for an "adventurous" look. Applied via `GoogleMap(mapStyle: _rihlaMapStyle)`. |
+| 3 | **User-facing error handling** | ✅ Done | Added `lib/core/error_toast.dart` (`ErrorToast.show()` for red SnackBars). MapTab now shows a SnackBar when "Share live location" fails to get position (instead of debug-only). Other screens already showed SnackBars on errors; this centralizes and extends coverage. |
+| 4 | **Firestore offline persistence** | ✅ Done | In `main.dart` after Firebase init: `FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true, cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED)`. Enables local cache for faster loads and offline resilience. |
+
+**Next (medium complexity):** Hyper-localized AI prompts, AI chat revisions, OCR expenses — ready for Donnie ↔ Cursor handoff when Donnie is back.

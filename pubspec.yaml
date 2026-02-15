@@ -46,6 +46,9 @@ dependencies:
   # Persistence
   shared_preferences: ^2.3.4
 
+  # Env / config (API keys – use assets/env.default or --dart-define)
+  flutter_dotenv: ^6.0.0
+
   # Utilities
   uuid: ^4.5.1
   http: ^1.2.2
@@ -81,3 +84,4 @@ flutter:
     - assets/icons/train.png
     - assets/icons/ferry.png
     - assets/icons/tent.png
+    - assets/env.default

@@ -1,9 +1,11 @@
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -20,55 +22,161 @@ import 'ui/screens/settings_screen.dart';
 import 'ui/theme/app_theme.dart';
 
 // ──────────────────────────────────────────────
-//  Entry point — run entire init + runApp in one zone to avoid zone mismatch.
+//  Entry point — show UI immediately, then init in background (avoids blank white screen).
 // ──────────────────────────────────────────────
 Future<void> main() async {
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
 
-    // Capture Flutter framework errors
-    FlutterError.onError = (details) {
-      FlutterError.presentError(details);
-      CrashLogService.instance.logError(
-        details.exception,
-        details.stack,
-      );
-    };
+  // Capture Flutter framework errors (safe to call before dotenv)
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    CrashLogService.instance.logError(
+      details.exception,
+      details.stack,
+    );
+  };
 
-    // 1. Firebase Core
-    try {
-      await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform);
-      debugPrint('[main] Firebase initialised ✓');
-    } catch (e) {
-      debugPrint('[main] Firebase init skipped: $e');
-      CrashLogService.instance.logError(e, StackTrace.current);
-    }
+  // Show a loading UI immediately so the app never stays on a blank white screen
+  runApp(const _SplashRoot());
+}
 
-    // 2. Load persisted settings
-    final settingsData = await AppSettingsData.load();
+/// Root that shows loading first, then the real app after init (or an error screen).
+class _SplashRoot extends StatefulWidget {
+  const _SplashRoot();
 
-    // 3. RevenueCat
-    try {
-      await PaymentService.instance.init();
-    } catch (e) {
-      debugPrint('[main] RevenueCat init skipped: $e');
-    }
+  @override
+  State<_SplashRoot> createState() => _SplashRootState();
+}
 
-    // 4. AdMob
-    if (!kIsWeb) {
+class _SplashRootState extends State<_SplashRoot> {
+  Widget? _app;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    runZonedGuarded(() async {
       try {
-        await MonetizationManager.instance.init();
-        MonetizationManager.instance.loadInterstitial();
-      } catch (e) {
-        debugPrint('[main] AdMob init skipped: $e');
-      }
-    }
+        // 1. Env (optional — app works with empty keys)
+        try {
+          await dotenv.load(fileName: 'assets/env.default');
+        } catch (e) {
+          debugPrint('[main] dotenv load skipped: $e');
+        }
 
-    runApp(RihlaApp(settingsData: settingsData));
-  }, (error, stackTrace) {
-    CrashLogService.instance.logError(error, stackTrace);
-  });
+        // 2. Firebase Core
+        try {
+          await Firebase.initializeApp(
+              options: DefaultFirebaseOptions.currentPlatform);
+          FirebaseFirestore.instance.settings = const Settings(
+            persistenceEnabled: true,
+            cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+          );
+        } catch (e) {
+          debugPrint('[main] Firebase init skipped: $e');
+          CrashLogService.instance.logError(e, StackTrace.current);
+        }
+
+        // 3. Settings (required for RihlaApp)
+        AppSettingsData settingsData;
+        try {
+          settingsData = await AppSettingsData.load();
+        } catch (e) {
+          debugPrint('[main] AppSettings load fallback: $e');
+          settingsData = AppSettingsData();
+        }
+
+        // 4. RevenueCat
+        try {
+          await PaymentService.instance.init();
+        } catch (e) {
+          debugPrint('[main] RevenueCat init skipped: $e');
+        }
+
+        // 5. AdMob
+        if (!kIsWeb) {
+          try {
+            await MonetizationManager.instance.init();
+            MonetizationManager.instance.loadInterstitial();
+          } catch (e) {
+            debugPrint('[main] AdMob init skipped: $e');
+          }
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _app = RihlaApp(settingsData: settingsData);
+          _error = null;
+        });
+      } catch (e, st) {
+        CrashLogService.instance.logError(e, st);
+        if (mounted) {
+          setState(() {
+            _error = e.toString();
+            _app = null;
+          });
+        }
+      }
+    }, (error, stackTrace) {
+      CrashLogService.instance.logError(error, stackTrace);
+      if (mounted) {
+        setState(() {
+          _error = error.toString();
+          _app = null;
+        });
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_app != null) return _app!;
+    if (_error != null) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.error_outline_rounded, size: 48, color: Colors.red),
+                  const SizedBox(height: 16),
+                  Text('Something went wrong', style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  Text(_error!, style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    // Loading — visible so never blank white
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4F46E5), brightness: Brightness.light)),
+      darkTheme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF4F46E5), brightness: Brightness.dark)),
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text('Loading…', style: TextStyle(color: Colors.grey[700], fontSize: 15)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ──────────────────────────────────────────────

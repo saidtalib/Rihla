@@ -1,5 +1,7 @@
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 
 /// A single point of interest for one day.
@@ -160,23 +162,38 @@ class AiService {
   AiService._();
   static final AiService instance = AiService._();
 
-  static const _apiKey = 'AIzaSyDf7swKIZ5hSnMWL_SRrAYxT_4reWKsgTg';
+  /// From env (assets/env.default or --dart-define=GEMINI_API_KEY=...).
+  String get _apiKey =>
+      dotenv.env['GEMINI_API_KEY'] ??
+      String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
 
-  late final _model = GenerativeModel(
-    model: 'gemini-2.0-flash',
-    apiKey: _apiKey,
-    generationConfig: GenerationConfig(
-      temperature: 0.8,
-      maxOutputTokens: 4096,
-      responseMimeType: 'application/json',
-    ),
-  );
+  GenerativeModel? _modelCache;
+
+  GenerativeModel get _model {
+    _modelCache ??= GenerativeModel(
+      model: 'gemini-2.0-flash',
+      apiKey: _apiKey,
+      generationConfig: GenerationConfig(
+        temperature: 0.8,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json',
+      ),
+    );
+    return _modelCache!;
+  }
 
   /// Takes any user input and extracts a structured trip plan.
   Future<AiTripResult> generateTrip({
     required String userInput,
     bool isArabic = false,
   }) async {
+    if (_apiKey.trim().isEmpty) {
+      throw Exception(
+        isArabic ? 'مفتاح API غير مضبوط. أضف GEMINI_API_KEY في assets/env.default'
+            : 'API key not configured. Add GEMINI_API_KEY in assets/env.default',
+      );
+    }
+
     final lang = isArabic ? 'Arabic' : 'English';
 
     final prompt = '''

@@ -11,9 +11,21 @@ import 'package:image/image.dart' as img;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_settings.dart';
+import '../../core/error_toast.dart';
 import '../../core/theme.dart';
 import '../../models/trip.dart';
 import '../../services/live_location_service.dart';
+
+/// Custom map style (adventurous / muted greens, less POI clutter).
+const String _rihlaMapStyle = '''
+[
+  {"featureType": "poi", "stylers": [{"visibility": "simplified"}]},
+  {"featureType": "transit", "stylers": [{"visibility": "off"}]},
+  {"featureType": "water", "elementType": "geometry.fill", "stylers": [{"color": "#a8d4e6"}]},
+  {"featureType": "landscape.natural", "elementType": "geometry.fill", "stylers": [{"color": "#e8f0e0"}]},
+  {"featureType": "road", "elementType": "geometry.stroke", "stylers": [{"color": "#c8d4b8"}]}
+]
+''';
 
 /// Interactive Google Map with default layers, route polyline & live location.
 class MapTab extends StatefulWidget {
@@ -393,6 +405,13 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
       );
     } catch (e) {
       debugPrint('[MapTab] Error getting position: $e');
+      if (mounted) {
+        final ar = AppSettings.of(context).isArabic;
+        ErrorToast.show(
+          context,
+          ar ? 'تعذر الحصول على الموقع' : 'Could not get location',
+        );
+      }
     }
 
     _positionStream = Geolocator.getPositionStream(
@@ -514,7 +533,7 @@ class _MapTabState extends State<MapTab> with AutomaticKeepAliveClientMixin {
           polylines: _polylines,
           myLocationEnabled: true,
           myLocationButtonEnabled: false,
-          // Full default navigation gestures
+          style: _rihlaMapStyle,
           scrollGesturesEnabled: true,
           zoomGesturesEnabled: true,
           tiltGesturesEnabled: true,
