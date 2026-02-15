@@ -20,6 +20,11 @@ dependencies:
   firebase_auth: ^5.5.1
   firebase_storage: ^12.4.4
 
+  # Auth providers
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+  crypto: ^3.0.6
+
   # Monetisation
   purchases_flutter: ^8.9.3
   google_mobile_ads: ^5.3.0
@@ -27,17 +32,43 @@ dependencies:
   # AI
   google_generative_ai: ^0.4.6
 
-  # Maps
+  # Maps & Location
   google_maps_flutter: ^2.10.0
+  geolocator: ^13.0.2
 
   # Media
   image_picker: ^1.1.2
+  file_picker: ^8.1.7
+
+  # Sharing
+  share_plus: ^10.1.4
+
+  # Persistence
+  shared_preferences: ^2.3.4
+
+  # Env / config (API keys – use assets/env.default or --dart-define)
+  flutter_dotenv: ^6.0.0
 
   # Utilities
   uuid: ^4.5.1
   http: ^1.2.2
   intl: ^0.19.0
   url_launcher: ^6.3.1
+  path_provider: ^2.1.5
+
+  # Charts & open file
+  fl_chart: ^0.69.0
+  open_filex: ^4.5.0
+
+  # Audio recording & playback
+  record: ^6.2.0
+  audioplayers: ^6.1.0
+
+  # Image processing (avatar markers)
+  image: ^4.5.0
+
+  # Calendar for itinerary
+  table_calendar: ^3.1.2
 
 dev_dependencies:
   flutter_test:
@@ -46,3 +77,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icons/jeep.png
+    - assets/icons/plane.png
+    - assets/icons/train.png
+    - assets/icons/ferry.png
+    - assets/icons/tent.png
+    - assets/env.default

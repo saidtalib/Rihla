@@ -7,7 +7,6 @@ import '../../core/theme.dart';
 import '../../services/ai_service.dart';
 import '../../services/trip_service.dart';
 import '../widgets/ad_banner.dart';
-import '../widgets/settings_toggles.dart';
 import 'trip_details_screen.dart';
 
 /// Free step: Describe your trip in any way, Gemini AI extracts everything.
@@ -137,7 +136,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(ar ? 'إنشاء رحلة' : 'Create Trip'),
-        actions: const [SettingsToggles()],
+        actions: const [],
         flexibleSpace: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -191,6 +190,46 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
                           ? 'مثال: خطط لرحلة عائلية من مسقط إلى بانكوك يوم 10 يوليو. نريد 3 أيام لاستكشاف المعابد والطعام في بانكوك، ثم رحلة قصيرة إلى بوكيت لمدة 4 ليالٍ، ثم الطيران إلى شيانغ ماي ليومين لزيارة محميات الأفيال...'
                           : "e.g., plan a family trip starting on July 10 from Muscat to Bangkok. We'd like to spend three days exploring the temples and street food in Bangkok before taking a short flight to Phuket for four nights then fly to Chiang Mai for two days to experience elephant sanctuaries ...",
                       hintMaxLines: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // ── Hints for better AI results ──────────
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: (dark ? RihlaColors.darkCard : RihlaColors.saharaSand)
+                          .withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(R.radiusMd),
+                      border: Border.all(
+                        color: labelColor.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ar ? 'نصائح لنتائج أفضل' : 'Tips for better results',
+                          style: TextStyle(
+                            fontFamily: fontFamily,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: labelColor.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          ar
+                              ? '• كن مفصّلاً قدر الإمكان: اذكر تاريخ البدء والانتهاء إن أمكن (مثلاً 15–22 مارس).\n• اذكر المدن والأماكن التي تريد زيارتها.\n• حدّد إن كنت تحتاج اقتراحات نقل محددة (طيران، قطار، تأجير سيارة).'
+                              : '• Be as detailed as possible: include start and end dates if you can (e.g. March 15–22).\n• Mention cities and places you want to see.\n• Say if you need specific transport suggestions (flights, trains, car rental).',
+                          style: TextStyle(
+                            fontFamily: fontFamily,
+                            fontSize: 12,
+                            height: 1.35,
+                            color: labelColor.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 20),

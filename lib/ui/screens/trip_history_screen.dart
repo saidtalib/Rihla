@@ -5,7 +5,6 @@ import '../../core/app_settings.dart';
 import '../../core/theme.dart';
 import '../../models/trip.dart';
 import '../../services/trip_service.dart';
-import '../widgets/settings_toggles.dart';
 import 'trip_details_screen.dart';
 
 /// Shows all trips the user has created or paid to join — always free.
@@ -26,7 +25,8 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
   }
 
   void _refresh() {
-    setState(() => _tripsFuture = TripService.instance.myTrips());
+    final future = TripService.instance.myTrips();
+    setState(() => _tripsFuture = future);
   }
 
   @override
@@ -43,7 +43,6 @@ class _TripHistoryScreenState extends State<TripHistoryScreen> {
         title: Text(ar ? 'رحلاتي' : 'My Trips'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _refresh),
-          const SettingsToggles(),
         ],
         flexibleSpace: Container(
           decoration: const BoxDecoration(

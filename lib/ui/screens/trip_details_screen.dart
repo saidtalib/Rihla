@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/app_settings.dart';
-import '../../core/theme.dart';
 import '../../models/trip.dart';
-import '../../services/payment_service.dart';
 import '../../services/trip_service.dart';
+import '../../ui/theme/app_theme.dart';
+import '../tabs/home_tab.dart';
+import '../tabs/itinerary_tab.dart';
 import '../tabs/map_tab.dart';
-import '../tabs/expense_tab.dart';
+import '../tabs/pack_tab.dart';
 import '../tabs/vault_tab.dart';
-import '../widgets/settings_toggles.dart';
+import 'kitty_screen.dart';
+import 'settings_screen.dart';
 
-/// Trip Command Center with BottomNavigationBar:
-/// Home (back) · Map · Expense · Vault
+/// Trip Dashboard with TabBar: Home · Map · The Pack · The Kitty · Vault
 class TripDetailsScreen extends StatefulWidget {
   const TripDetailsScreen({super.key, required this.trip});
   final Trip trip;
@@ -22,109 +24,157 @@ class TripDetailsScreen extends StatefulWidget {
   State<TripDetailsScreen> createState() => _TripDetailsScreenState();
 }
 
-class _TripDetailsScreenState extends State<TripDetailsScreen> {
+class _TripDetailsScreenState extends State<TripDetailsScreen>
+    with SingleTickerProviderStateMixin {
   late Trip _trip;
-  int _currentTab = 1; // Start on Map tab (index 1)
+  late TabController _tabCtrl;
+  late final Stream<Trip?> _tripStream;
 
   @override
   void initState() {
     super.initState();
     _trip = widget.trip;
+    _tabCtrl = TabController(length: 6, vsync: this);
+    // Cache the stream so it doesn't re-subscribe on every rebuild
+    _tripStream = TripService.instance.tripStream(_trip.id);
   }
 
-  void _onTabTapped(int index) {
-    if (index == 0) {
-      // Home tab → navigate back to main screen
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      return;
-    }
-    setState(() => _currentTab = index);
+  @override
+  void dispose() {
+    _tabCtrl.dispose();
+    super.dispose();
   }
 
+  void _onTripUpdated(Trip updated) {
+    setState(() => _trip = updated);
+  }
+
+  bool get _isAdmin => TripService.instance.currentUserIsAdmin(_trip);
+
+  // ── Admin-only share ──────────────────────────
   Future<void> _onShare() async {
     final ar = AppSettings.of(context).isArabic;
+    final code = _trip.joinCode;
+    final link = 'https://rihla.app/join/$code';
 
-    if (_trip.isPublic) {
-      _showJoinCode(ar);
-      return;
-    }
-
-    final paid = await showTripPaywall(
-      context,
-      isArabic: ar,
-      type: PaywallType.share,
-    );
-    if (!mounted) return;
-
-    if (paid) {
+    // Ensure trip is marked public
+    if (!_trip.isPublic) {
       await TripService.instance.markPublic(_trip.id);
       setState(() => _trip = _trip.copyWith(isPublic: true));
-      _showJoinCode(ar);
     }
+
+    if (!mounted) return;
+
+    // Show share sheet + bottom sheet with code
+    _showShareSheet(ar, code, link);
   }
 
-  void _showJoinCode(bool ar) {
-    final fontFamily =
-        ar ? GoogleFonts.cairo().fontFamily : GoogleFonts.pangolin().fontFamily;
+  void _showShareSheet(bool ar, String code, String link) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
 
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: RihlaColors.saharaSand,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(24)),
         ),
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 36),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 4,
-              margin: const EdgeInsets.only(bottom: 24),
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
-                color: RihlaColors.jungleGreen.withValues(alpha: 0.25),
+                color: cs.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Icon(Icons.share_rounded, size: 48, color: RihlaColors.jungleGreen),
-            const SizedBox(height: 16),
-            Text(ar ? 'رمز الانضمام' : 'Join Code',
-                style: TextStyle(fontFamily: fontFamily, fontSize: 20, fontWeight: FontWeight.w700, color: RihlaColors.jungleGreen)),
+            Icon(Icons.share_rounded, size: 40, color: cs.primary),
             const SizedBox(height: 12),
-            Text(ar ? 'شارك هذا الرمز مع أصدقائك:' : 'Share this code with your friends:',
-                style: TextStyle(fontFamily: fontFamily, fontSize: 14, color: RihlaColors.jungleGreenDark.withValues(alpha: 0.6)),
-                textAlign: TextAlign.center),
+            Text(
+              ar ? 'شارك الرحلة' : 'Share Trip',
+              style: tt.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              ar
+                  ? 'شارك هذا الرابط مع أصدقائك:'
+                  : 'Share this link with your friends:',
+              style: tt.bodyMedium?.copyWith(
+                color: cs.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
             const SizedBox(height: 20),
+
+            // Code display
             GestureDetector(
               onTap: () {
-                Clipboard.setData(ClipboardData(text: _trip.joinCode));
+                Clipboard.setData(ClipboardData(text: code));
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(ar ? 'تم النسخ!' : 'Copied!'), backgroundColor: RihlaColors.jungleGreen),
+                  SnackBar(
+                    content: Text(ar ? 'تم النسخ!' : 'Copied!'),
+                    backgroundColor: R.success,
+                  ),
                 );
               },
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 24, vertical: 14),
                 decoration: BoxDecoration(
-                  color: RihlaColors.jungleGreen.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: RihlaColors.jungleGreen.withValues(alpha: 0.2)),
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(R.radiusMd),
+                  border: Border.all(color: cs.outlineVariant),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_trip.joinCode,
-                        style: TextStyle(fontFamily: GoogleFonts.pangolin().fontFamily, fontSize: 32, fontWeight: FontWeight.w800, color: RihlaColors.sunsetOrange, letterSpacing: 6)),
+                    Text(
+                      code,
+                      style: GoogleFonts.inter(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: cs.primary,
+                        letterSpacing: 6,
+                      ),
+                    ),
                     const SizedBox(width: 12),
-                    Icon(Icons.copy_rounded, color: RihlaColors.jungleGreen.withValues(alpha: 0.5)),
+                    Icon(Icons.copy_rounded,
+                        color: cs.onSurfaceVariant),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
+
+            // Share button (native)
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(onPressed: () => Navigator.pop(context), child: Text(ar ? 'تم' : 'Done')),
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Share.share(
+                    ar
+                        ? 'انضم لرحلتي على Rihla! الرمز: $code\n$link'
+                        : 'Join my trip on Rihla! Code: $code\n$link',
+                  );
+                },
+                icon: const Icon(Icons.send_rounded),
+                label: Text(ar ? 'مشاركة الرابط' : 'Share Link'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(ar ? 'تم' : 'Done'),
+              ),
             ),
           ],
         ),
@@ -132,94 +182,103 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     );
   }
 
-  Widget _buildBody() {
-    switch (_currentTab) {
-      case 1:
-        return MapTab(trip: _trip);
-      case 2:
-        return ExpenseTab(trip: _trip);
-      case 3:
-        return VaultTab(trip: _trip);
-      default:
-        return MapTab(trip: _trip);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final settings = AppSettings.of(context);
-    final ar = settings.isArabic;
-    final dark = settings.isDarkMode;
+    final ar = AppSettings.of(context).isArabic;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_trip.title, overflow: TextOverflow.ellipsis),
-        automaticallyImplyLeading: false, // no back arrow — use Home tab
-        actions: [
-          IconButton(
-            icon: Icon(_trip.isPublic ? Icons.group_rounded : Icons.share_rounded),
-            tooltip: ar ? 'مشاركة' : 'Share',
-            onPressed: _onShare,
-          ),
-          const SettingsToggles(),
-        ],
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [RihlaColors.jungleGreenDark, RihlaColors.jungleGreen],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-      ),
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: _buildBody(),
-      ),
+    return StreamBuilder<Trip?>(
+      stream: _tripStream,
+      initialData: _trip,
+      builder: (context, snap) {
+        // Update the local trip whenever Firestore sends new data
+        if (snap.hasData && snap.data != null) {
+          // Only call setState via _onTripUpdated if the title actually changed
+          final incoming = snap.data!;
+          if (incoming.title != _trip.title ||
+              incoming.locations.length != _trip.locations.length ||
+              incoming.dailyAgenda.length != _trip.dailyAgenda.length) {
+            // Schedule a microtask to avoid setState during build
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _onTripUpdated(incoming);
+            });
+          }
+        }
 
-      // ── Bottom Navigation Bar ────────────────
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
+        return Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => Navigator.of(context).pop(),
             ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: BottomNavigationBar(
-            currentIndex: _currentTab,
-            onTap: _onTabTapped,
-            type: BottomNavigationBarType.fixed,
-            backgroundColor: dark ? const Color(0xFF1E1E36) : Colors.white,
-            selectedItemColor: RihlaColors.sunsetOrange,
-            unselectedItemColor: dark
-                ? RihlaColors.darkText.withValues(alpha: 0.5)
-                : RihlaColors.jungleGreen.withValues(alpha: 0.55),
-            items: [
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.home_rounded),
-                label: ar ? 'الرئيسية' : 'Home',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.map_rounded),
-                label: ar ? 'الخريطة' : 'Map',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.monetization_on_rounded),
-                label: ar ? 'المصاريف' : 'Expense',
-              ),
-              BottomNavigationBarItem(
-                icon: const Icon(Icons.folder_rounded),
-                label: ar ? 'الخزنة' : 'Vault',
+            title: Text(
+              _trip.title,
+              overflow: TextOverflow.ellipsis,
+            ),
+            actions: [
+              // Share icon — ONLY visible to admin
+              if (_isAdmin)
+                IconButton(
+                  icon: const Icon(Icons.share_rounded),
+                  tooltip: ar ? 'مشاركة' : 'Share',
+                  onPressed: _onShare,
+                ),
+              // Settings icon
+              IconButton(
+                icon: const Icon(Icons.settings_rounded, size: 20),
+                tooltip: ar ? 'الإعدادات' : 'Settings',
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                ),
               ),
             ],
+            bottom: TabBar(
+              controller: _tabCtrl,
+              isScrollable: true,
+              tabAlignment: TabAlignment.center,
+              tabs: [
+                Tab(
+                  icon: const Icon(Icons.home_rounded, size: 20),
+                  text: ar ? 'الرئيسية' : 'Home',
+                ),
+                Tab(
+                  icon: const Icon(Icons.calendar_month_rounded, size: 20),
+                  text: ar ? 'الجدول' : 'Itinerary',
+                ),
+                Tab(
+                  icon: const Icon(Icons.map_rounded, size: 20),
+                  text: ar ? 'الخريطة' : 'Map',
+                ),
+                Tab(
+                  icon: const Icon(Icons.groups_rounded, size: 20),
+                  text: ar ? 'العزوة' : 'The Pack',
+                ),
+                Tab(
+                  icon: const Icon(Icons.monetization_on_rounded,
+                      size: 20, color: Color(0xFFFFD700)),
+                  text: ar ? 'الجطية' : 'The Kitty',
+                ),
+                Tab(
+                  icon: const Icon(Icons.folder_rounded, size: 20),
+                  text: ar ? 'الخزنة' : 'Vault',
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+          body: TabBarView(
+            controller: _tabCtrl,
+            physics: const NeverScrollableScrollPhysics(),
+            children: [
+              HomeTab(trip: _trip, onTripUpdated: _onTripUpdated),
+              ItineraryTab(trip: _trip),
+              MapTab(trip: _trip),
+              PackTab(trip: _trip, onTripUpdated: _onTripUpdated),
+              KittyScreen(trip: _trip, onTripUpdated: _onTripUpdated),
+              VaultTab(trip: _trip),
+            ],
+          ),
+        );
+      },
     );
   }
 }

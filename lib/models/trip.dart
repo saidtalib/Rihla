@@ -1,24 +1,123 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Transport mode between stops.
+enum TransportType { drive, flight, train, ferry, unknown }
+
+TransportType parseTransportType(String? raw) {
+  switch (raw?.toLowerCase()) {
+    case 'drive':
+      return TransportType.drive;
+    case 'flight':
+      return TransportType.flight;
+    case 'train':
+      return TransportType.train;
+    case 'ferry':
+      return TransportType.ferry;
+    default:
+      return TransportType.unknown;
+  }
+}
+
 /// A location on the trip route.
 class TripLocation {
   final String name;
   final double lat;
   final double lng;
+  final TransportType transportType;
+  final bool isOvernight; // hotel / camp stop
 
-  const TripLocation({required this.name, required this.lat, required this.lng});
+  const TripLocation({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    this.transportType = TransportType.unknown,
+    this.isOvernight = false,
+  });
 
   factory TripLocation.fromMap(Map<String, dynamic> m) => TripLocation(
         name: m['name'] as String? ?? '',
         lat: (m['lat'] as num?)?.toDouble() ?? 0.0,
         lng: (m['lng'] as num?)?.toDouble() ?? 0.0,
+        transportType: parseTransportType(m['transport_type'] as String?),
+        isOvernight: m['is_overnight'] as bool? ?? false,
       );
 
-  Map<String, dynamic> toMap() => {'name': name, 'lat': lat, 'lng': lng};
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        'lat': lat,
+        'lng': lng,
+        'transport_type': transportType.name,
+        'is_overnight': isOvernight,
+      };
 }
 
 /// Member role within a trip.
 enum TripRole { admin, member }
+
+/// A point of interest for one day (from AI daily_agenda).
+class PoiItem {
+  final String name;
+  final String? description;
+  final double? lat;
+  final double? lng;
+  final String? searchQuery;
+
+  const PoiItem({
+    required this.name,
+    this.description,
+    this.lat,
+    this.lng,
+    this.searchQuery,
+  });
+
+  factory PoiItem.fromMap(Map<String, dynamic> m) => PoiItem(
+        name: m['name'] as String? ?? '',
+        description: m['description'] as String?,
+        lat: (m['lat'] as num?)?.toDouble(),
+        lng: (m['lng'] as num?)?.toDouble(),
+        searchQuery: m['search_query'] as String?,
+      );
+
+  Map<String, dynamic> toMap() => {
+        'name': name,
+        if (description != null) 'description': description,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+        if (searchQuery != null) 'search_query': searchQuery,
+      };
+}
+
+/// One day in the agenda: city + POIs.
+class DayAgenda {
+  final int dayIndex;
+  final String? date; // YYYY-MM-DD
+  final String? city;
+  final List<PoiItem> pois;
+
+  const DayAgenda({
+    required this.dayIndex,
+    this.date,
+    this.city,
+    this.pois = const [],
+  });
+
+  factory DayAgenda.fromMap(Map<String, dynamic> m) => DayAgenda(
+        dayIndex: (m['day_index'] as num?)?.toInt() ?? 0,
+        date: m['date'] as String?,
+        city: m['city'] as String?,
+        pois: (m['pois'] as List<dynamic>?)
+                ?.map((e) => PoiItem.fromMap(e as Map<String, dynamic>))
+                .toList() ??
+            [],
+      );
+
+  Map<String, dynamic> toMap() => {
+        'day_index': dayIndex,
+        if (date != null) 'date': date,
+        if (city != null) 'city': city,
+        'pois': pois.map((e) => e.toMap()).toList(),
+      };
+}
 
 /// Represents a single Rihla trip stored in Firestore.
 class Trip {
@@ -31,8 +130,12 @@ class Trip {
     this.itinerary = const [],
     this.locations = const [],
     this.transportSuggestions = const [],
+    this.startDate,
+    this.endDate,
+    this.dailyAgenda = const [],
     this.members = const {},
     this.isPublic = false,
+    this.isSettled = false,
     this.paidMembers = const [],
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -40,13 +143,26 @@ class Trip {
   final String id;
   final String title;
   final String description;
+
+  /// The original creator of the trip — cannot be removed or demoted.
   final String adminId;
   final String joinCode;
   final List<String> itinerary;
   final List<TripLocation> locations;
   final List<String> transportSuggestions;
-  final Map<String, String> members; // uid -> 'admin' | 'member'
+
+  /// Trip dates (YYYY-MM-DD or null if not set). From AI or relative mode.
+  final DateTime? startDate;
+  final DateTime? endDate;
+  /// Day-by-day agenda with POIs (from AI daily_agenda).
+  final List<DayAgenda> dailyAgenda;
+
+  /// uid -> 'admin' | 'member'
+  final Map<String, String> members;
   final bool isPublic;
+
+  /// Whether the kitty has been settled (frozen — no more edits).
+  final bool isSettled;
   final List<String> paidMembers;
   final DateTime createdAt;
 
@@ -54,6 +170,10 @@ class Trip {
 
   factory Trip.fromFirestore(DocumentSnapshot doc) {
     final d = doc.data()! as Map<String, dynamic>;
+    DateTime? parseDate(String? v) {
+      if (v == null || v.toString().isEmpty) return null;
+      return DateTime.tryParse(v.toString());
+    }
     return Trip(
       id: doc.id,
       title: d['title'] ?? '',
@@ -67,10 +187,18 @@ class Trip {
           [],
       transportSuggestions:
           List<String>.from(d['transport_suggestions'] ?? []),
+      startDate: parseDate(d['start_date'] as String?),
+      endDate: parseDate(d['end_date'] as String?),
+      dailyAgenda: (d['daily_agenda'] as List<dynamic>?)
+              ?.map((e) => DayAgenda.fromMap(e as Map<String, dynamic>))
+              .toList() ??
+          [],
       members: Map<String, String>.from(d['members'] ?? {}),
       isPublic: d['is_public'] ?? false,
+      isSettled: d['is_settled'] as bool? ?? false,
       paidMembers: List<String>.from(d['paid_members'] ?? []),
-      createdAt: (d['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt:
+          (d['created_at'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
 
@@ -82,19 +210,77 @@ class Trip {
         'itinerary': itinerary,
         'locations': locations.map((l) => l.toMap()).toList(),
         'transport_suggestions': transportSuggestions,
+        if (startDate != null) 'start_date': _formatDate(startDate!),
+        if (endDate != null) 'end_date': _formatDate(endDate!),
+        'daily_agenda': dailyAgenda.map((e) => e.toMap()).toList(),
         'members': members,
         'is_public': isPublic,
+        'is_settled': isSettled,
         'paid_members': paidMembers,
         'created_at': Timestamp.fromDate(createdAt),
       };
 
-  // ── Helpers ─────────────────────────────────
+  static String _formatDate(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  // ═════════════════════════════════════════════
+  //  Role & Permission Helpers
+  // ═════════════════════════════════════════════
+
+  /// Whether [uid] is the original trip creator.
+  bool isCreator(String uid) => uid == adminId;
+
+  /// Whether [uid] has the admin role (including the creator).
+  bool isAdmin(String uid) =>
+      uid == adminId || members[uid] == 'admin';
+
+  /// Whether [uid] has any access to this trip.
   bool hasAccess(String uid) =>
       uid == adminId || paidMembers.contains(uid);
 
-  bool isAdmin(String uid) =>
-      uid == adminId || members[uid] == 'admin';
+  /// Can [actorUid] remove [targetUid] from the trip?
+  ///
+  /// Rules:
+  /// - Creator can never be removed.
+  /// - Creator can remove anyone (admins + members).
+  /// - Admins can remove regular members but NOT other admins.
+  /// - Regular members cannot remove anyone.
+  bool canRemove(String actorUid, String targetUid) {
+    if (targetUid == adminId) return false; // creator is untouchable
+    if (actorUid == targetUid) return false; // can't remove yourself
+    if (actorUid == adminId) return true; // creator can remove anyone
+    if (isAdmin(actorUid) && !isAdmin(targetUid)) return true; // admin removes member
+    return false;
+  }
+
+  /// Can [actorUid] promote [targetUid] to admin?
+  ///
+  /// Rules:
+  /// - Only admins can promote.
+  /// - Can't promote someone who's already admin.
+  bool canPromote(String actorUid, String targetUid) {
+    if (!isAdmin(actorUid)) return false; // only admins can promote
+    if (isAdmin(targetUid)) return false; // already admin
+    return true;
+  }
+
+  /// Can [actorUid] demote [targetUid] from admin to member?
+  ///
+  /// Rules:
+  /// - Only the creator can demote admins.
+  /// - Creator can never be demoted.
+  bool canDemote(String actorUid, String targetUid) {
+    if (actorUid != adminId) return false; // only creator can demote
+    if (targetUid == adminId) return false; // creator can't be demoted
+    if (!isAdmin(targetUid)) return false; // target isn't admin
+    return true;
+  }
+
+  /// Whether [actorUid] can see manage actions (promote/remove/demote)
+  /// for any member at all.
+  bool canManageMembers(String actorUid) => isAdmin(actorUid);
+
+  // ── copyWith ──────────────────────────────────
 
   Trip copyWith({
     String? title,
@@ -102,8 +288,12 @@ class Trip {
     List<String>? itinerary,
     List<TripLocation>? locations,
     List<String>? transportSuggestions,
+    DateTime? startDate,
+    DateTime? endDate,
+    List<DayAgenda>? dailyAgenda,
     Map<String, String>? members,
     bool? isPublic,
+    bool? isSettled,
     List<String>? paidMembers,
   }) =>
       Trip(
@@ -116,8 +306,12 @@ class Trip {
         locations: locations ?? this.locations,
         transportSuggestions:
             transportSuggestions ?? this.transportSuggestions,
+        startDate: startDate ?? this.startDate,
+        endDate: endDate ?? this.endDate,
+        dailyAgenda: dailyAgenda ?? this.dailyAgenda,
         members: members ?? this.members,
         isPublic: isPublic ?? this.isPublic,
+        isSettled: isSettled ?? this.isSettled,
         paidMembers: paidMembers ?? this.paidMembers,
         createdAt: createdAt,
       );

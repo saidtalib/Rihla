@@ -12,7 +12,20 @@
           "package_name": "com.almaw.rihla"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1033074555968-lotd2261sspae0dsbveth5jkrrumsosc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.almaw.rihla",
+            "certificate_hash": "6182bfa0688c7022f81e74d5cae61651368d7b07"
+          }
+        },
+        {
+          "client_id": "1033074555968-aa77iassk93j89df7ckk0hrn3cbh5q3q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBbiFIoQfTDkTrIkdwweFW8_RzjEsD1WEI"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1033074555968-aa77iassk93j89df7ckk0hrn3cbh5q3q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1033074555968-l069jc0548ojj1u39v2sls6gnctch7a4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.almaw.rihla"
+              }
+            }
+          ]
         }
       }
     },
@@ -31,7 +56,12 @@
           "package_name": "com.example.myapp"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1033074555968-aa77iassk93j89df7ckk0hrn3cbh5q3q.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBbiFIoQfTDkTrIkdwweFW8_RzjEsD1WEI"
@@ -39,7 +69,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1033074555968-aa77iassk93j89df7ckk0hrn3cbh5q3q.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1033074555968-l069jc0548ojj1u39v2sls6gnctch7a4.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.almaw.rihla"
+              }
+            }
+          ]
         }
       }
     }

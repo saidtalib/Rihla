@@ -19,6 +19,64 @@ class TripService {
 
   String get _uid => FirebaseAuth.instance.currentUser?.uid ?? 'anonymous';
 
+  // ── Name resolution cache ─────────────────────
+  final Map<String, String> _nameCache = {};
+
+  /// Resolve a list of UIDs to their display names from the `users` collection.
+  /// Results are cached in memory to avoid repeated Firestore reads.
+  Future<Map<String, String>> resolveNames(List<String> uids) async {
+    final result = <String, String>{};
+    final toFetch = <String>[];
+
+    for (final uid in uids) {
+      if (_nameCache.containsKey(uid)) {
+        result[uid] = _nameCache[uid]!;
+      } else {
+        toFetch.add(uid);
+      }
+    }
+
+    for (final uid in toFetch) {
+      try {
+        final doc = await _db.collection('users').doc(uid).get();
+        final data = doc.data();
+        // Check both snake_case (used by auth_service) and camelCase (legacy)
+        final name =
+            (data?['display_name'] as String?)?.isNotEmpty == true
+                ? data!['display_name'] as String
+                : (data?['displayName'] as String?)?.isNotEmpty == true
+                    ? data!['displayName'] as String
+                    : 'Member ${uid.length >= 6 ? uid.substring(0, 6) : uid}';
+        _nameCache[uid] = name;
+        result[uid] = name;
+      } catch (_) {
+        final fallback =
+            'Member ${uid.length >= 6 ? uid.substring(0, 6) : uid}';
+        _nameCache[uid] = fallback;
+        result[uid] = fallback;
+      }
+    }
+
+    return result;
+  }
+
+  /// Get a cached name for a UID (returns short UID if not cached).
+  String getCachedName(String uid) {
+    return _nameCache[uid] ??
+        (uid.length >= 6 ? uid.substring(0, 6) : uid);
+  }
+
+  /// Force re-fetch names on next call (clears stale cache).
+  void clearNameCache() => _nameCache.clear();
+
+  // ── Real-time trip stream ─────────────────────
+  Stream<Trip?> tripStream(String tripId) {
+    return _trips.doc(tripId).snapshots().map((snap) {
+      if (!snap.exists) return null;
+      return Trip.fromFirestore(snap);
+    });
+  }
+
   String _generateJoinCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rng = Random.secure();
@@ -32,9 +90,17 @@ class TripService {
     List<String> itinerary = const [],
     List<TripLocation> locations = const [],
     List<String> transportSuggestions = const [],
+    DateTime? startDate,
+    DateTime? endDate,
+    List<DayAgenda> dailyAgenda = const [],
   }) async {
     final code = _generateJoinCode();
     final now = DateTime.now();
+
+    String? formatDate(DateTime? d) =>
+        d != null
+            ? '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}'
+            : null;
 
     // Build the plain Map ourselves — no FieldValue.serverTimestamp()
     // so the write works instantly even without server connectivity.
@@ -46,6 +112,9 @@ class TripService {
       'itinerary': itinerary,
       'locations': locations.map((l) => l.toMap()).toList(),
       'transport_suggestions': transportSuggestions,
+      if (startDate != null) 'start_date': formatDate(startDate),
+      if (endDate != null) 'end_date': formatDate(endDate),
+      'daily_agenda': dailyAgenda.map((e) => e.toMap()).toList(),
       'members': {_uid: 'admin'},
       'is_public': false,
       'paid_members': [_uid],
@@ -73,6 +142,9 @@ class TripService {
         itinerary: itinerary,
         locations: locations,
         transportSuggestions: transportSuggestions,
+        startDate: startDate,
+        endDate: endDate,
+        dailyAgenda: dailyAgenda,
         members: {_uid: 'admin'},
         isPublic: false,
         paidMembers: [_uid],
@@ -94,15 +166,47 @@ class TripService {
     debugPrint('[TripService]   locations: ${result.locations.length}');
     debugPrint('[TripService]   transport: ${result.transportSuggestions.length}');
     debugPrint('[TripService]   itinerary: ${result.dailyItinerary.length}');
+    debugPrint('[TripService]   dailyAgenda: ${result.dailyAgenda.length}');
+
+    DateTime? parseDate(String? s) => s != null && s.isNotEmpty ? DateTime.tryParse(s) : null;
+
+    final startDate = parseDate(result.tripStartDate);
+    final endDate = parseDate(result.tripEndDate);
+
+    final dailyAgenda = result.dailyAgenda
+        .map((a) => DayAgenda(
+              dayIndex: a.dayIndex,
+              date: a.date,
+              city: a.city,
+              pois: a.pois
+                  .map((p) => PoiItem(
+                        name: p.name,
+                        description: p.description,
+                        lat: p.lat,
+                        lng: p.lng,
+                        searchQuery: p.searchQuery,
+                      ))
+                  .toList(),
+            ))
+        .toList();
 
     return createTrip(
       title: result.tripTitle,
       description: description,
       itinerary: result.dailyItinerary,
       locations: result.locations
-          .map((l) => TripLocation(name: l.name, lat: l.lat, lng: l.lng))
+          .map((l) => TripLocation(
+                name: l.name,
+                lat: l.lat,
+                lng: l.lng,
+                transportType: parseTransportType(l.transportType),
+                isOvernight: l.isOvernight,
+              ))
           .toList(),
       transportSuggestions: result.transportSuggestions,
+      startDate: startDate,
+      endDate: endDate,
+      dailyAgenda: dailyAgenda,
     );
   }
 
@@ -144,6 +248,50 @@ class TripService {
   Future<void> promoteToAdmin(String tripId, String memberId) async {
     await _trips.doc(tripId).update({
       'members.$memberId': 'admin',
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Demote admin to regular member ────────────
+  Future<void> demoteToMember(String tripId, String memberId) async {
+    await _trips.doc(tripId).update({
+      'members.$memberId': 'member',
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Remove a member from trip ─────────────────
+  Future<void> removeMember(String tripId, String memberId) async {
+    await _trips.doc(tripId).update({
+      'paid_members': FieldValue.arrayRemove([memberId]),
+      'members.$memberId': FieldValue.delete(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Update trip title ─────────────────────────
+  Future<void> updateTitle(String tripId, String newTitle) async {
+    await _trips.doc(tripId).update({
+      'title': newTitle,
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Delete a location from trip ───────────────
+  Future<void> removeLocation(String tripId, List<TripLocation> updatedLocations) async {
+    await _trips.doc(tripId).update({
+      'locations': updatedLocations.map((l) => l.toMap()).toList(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  // ── Settle / Unsettle trip kitty ────────────
+  Future<void> settleTrip(String tripId) async {
+    await _trips.doc(tripId).update({
+      'is_settled': true,
+      'settled_at': FieldValue.serverTimestamp(),
+    }).timeout(const Duration(seconds: 10));
+  }
+
+  Future<void> unsettleTrip(String tripId) async {
+    await _trips.doc(tripId).update({
+      'is_settled': false,
+      'settled_at': FieldValue.delete(),
     }).timeout(const Duration(seconds: 10));
   }
 

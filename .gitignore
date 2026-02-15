@@ -46,3 +46,6 @@ app.*.map.json
 
 # Nested clone / Flutter SDK
 /Rihla/
+
+# Local env with real API keys (never commit)
+.env

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
@@ -7,7 +8,11 @@ import '../core/theme.dart';
 // ──────────────────────────────────────────────
 //  RevenueCat identifiers  (STM / Rihla)
 // ──────────────────────────────────────────────
-const String _revenueCatApiKey = 'YOUR_REVENUECAT_SDK_KEY';
+/// From env (assets/env.default or --dart-define=REVENUECAT_API_KEY=...).
+String get _revenueCatApiKey =>
+    dotenv.env['REVENUECAT_API_KEY'] ??
+    String.fromEnvironment('REVENUECAT_API_KEY', defaultValue: '');
+
 const String _entitlementId = 'premium_trip';
 const String _packageId = 'trip_credit';
 
@@ -23,8 +28,10 @@ class PaymentService {
   /// Call once from main() after WidgetsFlutterBinding.
   Future<void> init() async {
     if (_initialized) return;
+    final key = _revenueCatApiKey.trim();
+    if (key.isEmpty) return;
     await Purchases.configure(
-      PurchasesConfiguration(_revenueCatApiKey),
+      PurchasesConfiguration(key),
     );
     _initialized = true;
   }
