@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -68,17 +68,26 @@ class _SplashRootState extends State<_SplashRoot> {
           debugPrint('[main] dotenv load skipped: $e');
         }
 
-        // 2. Firebase Core
-        try {
-          await Firebase.initializeApp(
-              options: DefaultFirebaseOptions.currentPlatform);
-          FirebaseFirestore.instance.settings = const Settings(
-            persistenceEnabled: true,
-            cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-          );
-        } catch (e) {
-          debugPrint('[main] Firebase init skipped: $e');
-          CrashLogService.instance.logError(e, StackTrace.current);
+        // 2. Firebase Core — skip on iOS when config is still placeholder (avoids native crash in simulator)
+        final firebaseOptions = DefaultFirebaseOptions.currentPlatform;
+        final isIosPlaceholder = !kIsWeb &&
+            defaultTargetPlatform == TargetPlatform.iOS &&
+            (firebaseOptions.appId == 'YOUR-APP-ID' ||
+                firebaseOptions.projectId == 'YOUR-PROJECT-ID');
+        if (!isIosPlaceholder) {
+          try {
+            await Firebase.initializeApp(options: firebaseOptions);
+            FirebaseFirestore.instance.settings = const Settings(
+              persistenceEnabled: true,
+              cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+            );
+          } catch (e) {
+            debugPrint('[main] Firebase init skipped: $e');
+            CrashLogService.instance.logError(e, StackTrace.current);
+          }
+        } else {
+          debugPrint(
+              '[main] Firebase init skipped (iOS placeholder config). Run: flutterfire configure');
         }
 
         // 3. Settings (required for RihlaApp)
