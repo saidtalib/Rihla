@@ -27,13 +27,15 @@ import 'ui/theme/app_theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Capture Flutter framework errors (safe to call before dotenv)
+  // Capture Flutter framework errors (logging must not throw)
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    CrashLogService.instance.logError(
-      details.exception,
-      details.stack,
-    );
+    try {
+      CrashLogService.instance.logError(
+        details.exception,
+        details.stack,
+      );
+    } catch (_) {}
   };
 
   // Show a loading UI immediately so the app never stays on a blank white screen
@@ -106,8 +108,8 @@ class _SplashRootState extends State<_SplashRoot> {
           debugPrint('[main] RevenueCat init skipped: $e');
         }
 
-        // 5. AdMob
-        if (!kIsWeb) {
+        // 5. AdMob — skip on iOS to avoid native crash in simulator (re-enable after testing on device)
+        if (!kIsWeb && defaultTargetPlatform != TargetPlatform.iOS) {
           try {
             await MonetizationManager.instance.init();
             MonetizationManager.instance.loadInterstitial();

@@ -38,15 +38,26 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _googleSignIn() async {
+    if (!AuthService.instance.hasFirebase) {
+      _showFirebaseNotConfigured();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      await AuthService.instance.signInWithGoogle();
+      final result = await AuthService.instance.signInWithGoogle();
+      if (mounted && result == null && !AuthService.instance.hasFirebase) {
+        _showFirebaseNotConfigured();
+      } else if (mounted && result == null) {
+        setState(() => _error = AppSettings.of(context).isArabic
+            ? 'تم إلغاء تسجيل الدخول أو غير متاح'
+            : 'Sign-in was cancelled or unavailable.');
+      }
     } catch (e) {
       if (mounted) {
-        setState(() => _error = e.toString());
+        setState(() => _error = _friendlyError(e.toString(), AppSettings.of(context).isArabic));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -54,19 +65,37 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _appleSignIn() async {
+    if (!AuthService.instance.hasFirebase) {
+      _showFirebaseNotConfigured();
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      await AuthService.instance.signInWithApple();
+      final result = await AuthService.instance.signInWithApple();
+      if (mounted && result == null && !AuthService.instance.hasFirebase) {
+        _showFirebaseNotConfigured();
+      } else if (mounted && result == null) {
+        setState(() => _error = AppSettings.of(context).isArabic
+            ? 'تم إلغاء تسجيل الدخول أو غير متاح'
+            : 'Sign-in was cancelled or unavailable.');
+      }
     } catch (e) {
       if (mounted) {
-        setState(() => _error = e.toString());
+        setState(() => _error = _friendlyError(e.toString(), AppSettings.of(context).isArabic));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _showFirebaseNotConfigured() {
+    final ar = AppSettings.of(context).isArabic;
+    setState(() => _error = ar
+        ? 'تسجيل الدخول غير متاح — Firebase غير مُعدّ لهذا الإصدار. شغّل: flutterfire configure'
+        : 'Sign-in unavailable — Firebase is not configured for this build. Run: flutterfire configure');
   }
 
   Future<void> _emailAuth() async {
@@ -125,6 +154,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _forgotPassword() async {
+    if (!AuthService.instance.hasFirebase) {
+      _showFirebaseNotConfigured();
+      return;
+    }
     final ar = AppSettings.of(context).isArabic;
     final email = _emailCtrl.text.trim();
     if (email.isEmpty) {
@@ -152,6 +185,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   String _friendlyError(String error, bool ar) {
+    if (error.contains('Firebase not initialized') ||
+        error.contains('StateError') && error.contains('Firebase')) {
+      return ar
+          ? 'تسجيل الدخول غير متاح — Firebase غير مُعدّ. شغّل: flutterfire configure'
+          : 'Sign-in unavailable — Firebase not configured. Run: flutterfire configure';
+    }
     if (error.contains('user-not-found')) {
       return ar ? 'لا يوجد حساب بهذا البريد' : 'No account found with this email';
     }
@@ -201,6 +240,39 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
             ),
+
+            // ── Firebase not configured banner ───────
+            if (!AuthService.instance.hasFirebase)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: R.warning.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(R.radiusMd),
+                    border: Border.all(color: R.warning.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded,
+                          size: 20, color: R.warning),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          settings.isArabic
+                              ? 'تسجيل الدخول غير متاح — Firebase غير مُعدّ لهذا الإصدار. شغّل: flutterfire configure'
+                              : 'Sign-in unavailable — Firebase is not configured for this build. Run: flutterfire configure',
+                          style: tt.bodySmall?.copyWith(
+                            color: cs.onSurface.withValues(alpha: 0.9),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
             // ── Main scrollable content ──────────────
             Expanded(

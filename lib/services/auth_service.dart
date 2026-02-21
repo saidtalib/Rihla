@@ -4,29 +4,40 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 /// Manages authentication and user profile sync.
+/// When Firebase is not initialized (e.g. iOS placeholder config), acts as "signed out".
 class AuthService {
   AuthService._();
   static final AuthService instance = AuthService._();
 
-  final _auth = FirebaseAuth.instance;
-  final _db = FirebaseFirestore.instance;
+  bool get _hasFirebase => Firebase.apps.isNotEmpty;
 
-  User? get currentUser => _auth.currentUser;
-  Stream<User?> get authStateChanges => _auth.authStateChanges();
+  /// True when Firebase has been initialized (sign-in and Firestore are available).
+  bool get hasFirebase => _hasFirebase;
+
+  FirebaseAuth? get _auth =>
+      _hasFirebase ? FirebaseAuth.instance : null;
+  FirebaseFirestore? get _db =>
+      _hasFirebase ? FirebaseFirestore.instance : null;
+
+  User? get currentUser => _auth?.currentUser;
+  Stream<User?> get authStateChanges =>
+      _auth?.authStateChanges() ?? Stream.value(null);
 
   // ─────────────────────────────────────────────
   //  Google Sign-In
   // ─────────────────────────────────────────────
   Future<UserCredential?> signInWithGoogle() async {
+    if (_auth == null) return null;
     try {
       if (kIsWeb) {
         final provider = GoogleAuthProvider();
-        return await _auth.signInWithPopup(provider);
+        return await _auth!.signInWithPopup(provider);
       }
 
       final googleUser = await GoogleSignIn().signIn();
@@ -37,7 +48,7 @@ class AuthService {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      return await _auth.signInWithCredential(credential);
+      return await _auth!.signInWithCredential(credential);
     } catch (e) {
       debugPrint('[AuthService] Google sign-in error: $e');
       rethrow;
@@ -65,8 +76,9 @@ class AuthService {
         rawNonce: rawNonce,
       );
 
+      if (_auth == null) return null;
       final userCredential =
-          await _auth.signInWithCredential(oauthCredential);
+          await _auth!.signInWithCredential(oauthCredential);
 
       // Apple only provides the name on first sign-in
       if (appleCredential.givenName != null) {
@@ -90,7 +102,8 @@ class AuthService {
   // ─────────────────────────────────────────────
   Future<UserCredential> signUpWithEmail(
       String email, String password) async {
-    final cred = await _auth.createUserWithEmailAndPassword(
+    if (_auth == null) throw StateError('Firebase not initialized');
+    final cred = await _auth!.createUserWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
@@ -103,25 +116,26 @@ class AuthService {
 
   Future<UserCredential> signInWithEmail(
       String email, String password) async {
-    return await _auth.signInWithEmailAndPassword(
+    if (_auth == null) throw StateError('Firebase not initialized');
+    return await _auth!.signInWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
   }
 
   Future<void> sendPasswordReset(String email) async {
-    await _auth.sendPasswordResetEmail(email: email.trim());
+    await _auth?.sendPasswordResetEmail(email: email.trim());
   }
 
   Future<void> resendVerificationEmail() async {
-    await _auth.currentUser?.sendEmailVerification();
+    await _auth?.currentUser?.sendEmailVerification();
   }
 
   // ─────────────────────────────────────────────
   //  Sign Out
   // ─────────────────────────────────────────────
   Future<void> signOut() async {
-    await _auth.signOut();
+    await _auth?.signOut();
     try {
       await GoogleSignIn().signOut();
     } catch (_) {}
@@ -133,12 +147,12 @@ class AuthService {
   /// Permanently deletes the user's account from Firebase Auth
   /// and removes their document from the `users` collection.
   Future<void> deleteAccount() async {
-    final user = _auth.currentUser;
-    if (user == null) return;
+    final user = _auth?.currentUser;
+    if (user == null || _db == null) return;
 
     // Remove Firestore user document
     try {
-      await _db.collection('users').doc(user.uid).delete();
+      await _db!.collection('users').doc(user.uid).delete();
     } catch (e) {
       debugPrint('[AuthService] Failed to delete user doc: $e');
     }
@@ -155,8 +169,8 @@ class AuthService {
     String? photoUrl,
     String? username,
   }) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
+    final user = _auth?.currentUser;
+    if (user == null || _db == null) return;
 
     final data = <String, dynamic>{
       'uid': user.uid,
@@ -170,7 +184,7 @@ class AuthService {
       data['username'] = username;
     }
 
-    await _db.collection('users').doc(user.uid).set(
+    await _db!.collection('users').doc(user.uid).set(
       data,
       SetOptions(merge: true),
     );
@@ -178,9 +192,9 @@ class AuthService {
 
   /// Fetch the current user's username from Firestore.
   Future<String?> getUsername() async {
-    final user = _auth.currentUser;
-    if (user == null) return null;
-    final doc = await _db.collection('users').doc(user.uid).get();
+    final user = _auth?.currentUser;
+    if (user == null || _db == null) return null;
+    final doc = await _db!.collection('users').doc(user.uid).get();
     if (!doc.exists) return null;
     return doc.data()?['username'] as String?;
   }
@@ -190,7 +204,7 @@ class AuthService {
     required String displayName,
     String? photoUrl,
   }) async {
-    final user = _auth.currentUser;
+    final user = _auth?.currentUser;
     if (user == null) return;
 
     await user.updateDisplayName(displayName);
@@ -205,7 +219,7 @@ class AuthService {
 
   /// Check if the user profile is complete (has display name).
   bool get isProfileComplete {
-    final user = _auth.currentUser;
+    final user = _auth?.currentUser;
     if (user == null) return false;
     return user.displayName != null && user.displayName!.trim().isNotEmpty;
   }
